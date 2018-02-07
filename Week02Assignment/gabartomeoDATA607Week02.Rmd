@@ -1,0 +1,32 @@
+---
+title: "gabartomeoDATA607Week02"
+author: "Gabrielle Bartomeo"
+date: "February 7, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(RMySQL)
+mydb = dbConnect(
+  MySQL(),
+  user ='root',
+  password = replacemewithyourlocalpasswordpls,
+  dbname = 'test',
+  host = 'localhost'
+  )
+movies <- dbReadTable(mydb, "movies")
+people <- dbReadTable(mydb, "people")
+ratings <- dbReadTable(mydb, "ratings")
+results <- merge(ratings, movies, by="movieID")
+results <- merge(results, people, by="personID")
+results <- results[,c("ratingID", "movieName", "personName", "rating")]
+results <- results[order(results$ratingID),]
+rownames(results) <- 1:nrow(results)
+```
+
+# Results
+
+```{r}
+knitr::kable(results, align="c")
+```
