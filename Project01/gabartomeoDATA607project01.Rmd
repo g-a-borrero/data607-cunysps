@@ -1,0 +1,70 @@
+---
+title: "gabartomeoDATA607project01"
+author: "Gabrielle Bartomeo"
+date: "February 22, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Getting the Text File into R
+
+```{r}
+fileName <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Project01/tournamentinfo.txt"
+connection <- file(fileName, "r")
+txt <- readLines(connection, warn = F)
+close(connection)
+```
+
+# Breaking the Text File Apart
+
+```{r}
+# This initial part is to split the table into pieces using the pipe | as a separator
+txtList <- strsplit(txt, "\\|")
+
+# This strips out any leading and trailing whitespace
+txtList <- lapply(txtList, trimws)
+
+# This skips any lines with dashes
+txtList <- txtList[sort(c(seq(5, length(txtList), 3), seq(6, length(txtList), 3)))]
+txtList <- Filter(length, txtList)
+
+# This makes a data frame, just so we have the whole table in front of us
+txtFrameOdd <- do.call(rbind, txtList[seq(1, length(txtList), 2)])
+txtFrameOdd <- as.data.frame(txtFrameOdd)
+txtFrameEven <- do.call(rbind, txtList[seq(2, length(txtList), 2)])
+txtFrameEven <- as.data.frame(txtFrameEven)
+txtFrame <- cbind(txtFrameOdd, txtFrameEven)
+names(txtFrame) <- c("Number", "Player's Name", "Total Number of Points", "Round 1", "Round 2", "Round 3", "Round 4", "Round 5", "Round 6", "Round 7", "Player's State", "Rating", "N", "Round 1 Status", "Round 2 Status", "Round 3 Status", "Round 4 Status", "Round 5 Status", "Round 6 Status", "Round 7 Status")
+```
+
+# Adding Columns We Need
+```{r}
+# Let's add the ratings alone onto the data frame with what we need
+ratings <- gsub(" ", "", txtFrame$"Rating")
+ratingsReg <- gregexpr("(?<=:)(\\d+)(?=-|P)", ratings, perl=TRUE)
+txtFrame$"Player's Pre-Rating" <- regmatches(ratings, ratingsReg)
+txtFrame$"Player's Pre-Rating" <- as.numeric(unlist(txtFrame$"Player's Pre-Rating", use.names=F))
+
+# Make a separate rounds table, makes things easier
+rounds <- txtFrame[c("Round 1", "Round 2", "Round 3", "Round 4", "Round 5", "Round 6", "Round 7")]
+rounds <- lapply(rounds, function (x) as.numeric(gsub("[^\\d]", "", x, perl=T)))
+rounds <- as.data.frame(rounds)
+
+# Get the average ratings using the rounds table and a new ratings table
+playerRatings <- sapply(rounds, function(x) ifelse(x=="NULL", NA, unlist(txtFrame$"Player's Pre-Rating"[x])))
+playerRatings <- as.data.frame(playerRatings)
+playerRatings <- as.data.frame(sapply(playerRatings, function(x) as.numeric(as.character(x))))
+
+# From here, averages are easy!
+txtFrame$"Average Pre Chess Rating of Opponents" <- rowMeans(playerRatings, na.rm=T)
+```
+
+# Setting up the Data Frame and Outputting the CSV
+
+```{r}
+output <- txtFrame[c("Player's Name", "Player's State", "Total Number of Points", "Player's Pre-Rating", "Average Pre Chess Rating of Opponents")]
+write.csv(output, file=file("tournamentinfo.csv", "w"), row.names=F, na="")
+```
