@@ -1,0 +1,155 @@
+---
+title: "gabartomeoDATA607Week05"
+author: "Gabrielle Bartomeo"
+date: "February 28, 2018"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(dplyr)
+```
+
+# Getting the CSV into R
+
+The first step is to get the CSV we created into R. First, we create a variable for the file name, aptly called fileName, for storing the string that is the path to the CSV we need to use. After that, it's a matter of using the __read.csv()__ function.
+
+```{r}
+fileName <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Week05Assignment/arrivals.csv"
+arrivals <- read.csv(fileName)
+knitr::kable(arrivals)
+```
+
+# Transforming the CSV
+
+## Making a Tibble
+
+Tibbles are beefed up, dumbed down, friendlier data frames. By using the __as_tibble()__ function we can make our imported CSV into a tibble, similar to how we can use __as.data.frame()__ in base R. We then use __drop_na()__ to remove any rows that have NA. This might not be ideal in another dataset, but for this one, it will do since we have a separator that does nothing for us.
+
+```{r}
+arrivals <- as_tibble(arrivals)
+arrivals <- drop_na(arrivals)
+arrivals
+```
+
+## Fixing the Tibble As Is
+
+Something that is going to make dealing with this Tibble difficult is the empty strings we see, so let's just assign them accordingly.
+
+```{r}
+arrivals[2,1] <- arrivals[1,1]
+arrivals[4,1] <- arrivals[3,1]
+arrivals
+```
+
+## Using the Tibble
+
+The first thing we're going to want to do is combine the airlines with the status of the flights. This is for the sake of making columns later as it will make things easier for us. To do this, we use the __unite()__ function. We are required to provide it the name of the column, the array or list of columns we are looking to combine. In this case, we are looking to combine what is currently column X, which has the values "ALASKA" and "AM WEST", and the column with the status of the flights, which has the values "delayed" and "on time". If no seperator is provided, the default is an underscore. For this reason, we are going to provide the separator as " - " for clarity's sake.
+
+```{r}
+arrivals.explanation <- unite(arrivals, Airline.Status, X:X.1, sep=" - ")
+```
+
+```{r echo=FALSE}
+arrivals.explanation
+```
+
+Next, we want to get all of the cities into their own rows and to put the amount of arrivals, delayed or on time, in a column. We'll be using the __gather()__ function for this, providing the tibble, the name of the first new column which will act as a key, the name of the second new column which will act as values, and the columns being used to make these new columns. In this instance, we want the cities to all be under a column named "city" and the amount of arrivals to all be under a column named "arrivalAmt". We also want to populate the new city column with the names of the cities that are currently column names, and populate the new arrivalAmt column with the values found in each of the columns bearing city names.
+
+```{r}
+arrivals.explanation <- gather(arrivals.explanation, city, arrivalAmt, Los.Angeles:Seattle)
+```
+
+```{r echo=FALSE}
+arrivals.explanation
+```
+
+Lastly we'll want to take the airline status column and make it into multiple columns, as our observations were of the airports in each city. To do this, we want the __spread()__ function. We'll have to again specify the tibble we're using, and then we'll want to provide the column that currently has the values we want to be individual columns, and then the column that we want to use the populate those new columns. We're looking to have "ALASKA - on time", "ALASKA - delayed", "AM WEST - on time", and "AM WEST - delayed" as columns, which then have the numbers in the column "arrivalAmt".
+
+```{r}
+arrivals.explanation <- spread(arrivals.explanation, Airline.Status, arrivalAmt)
+```
+
+```{r echo=FALSE}
+arrivals.explanation
+```
+
+## Shortcut for Tibbling
+
+Not sure if that's a word but if it wasn't before, now it is. All of the things I explained above can be chained into a block using the __%>%__ operator. When we use this, we don't need to reiterate the name of the tibble each time unless we're using a new tibble.
+
+```{r}
+arrivals <- arrivals %>%
+  unite(Airline.Status, X:X.1, sep=" - ") %>%
+  gather(city, arrivalAmt, Los.Angeles:Seattle) %>%
+  spread(Airline.Status, arrivalAmt)
+```
+
+```{r echo=FALSE}
+arrivals
+```
+
+Note that it looks the exact same as the one from the previous section!
+
+And just to make it look nicer, we're going to replace all instances of periods in the city names with spaces using __gsub()__. This is a function we've already learned, but just for a refresher, it takes a pattern, the replacement for all matches of that pattern, and a character vector or other object that can be coerced to be a character vector. In this instance, our pattern will be "\\.", the period with leading double backslashes to escape the character so it will not be the regular expression ".", which making a single instance of anything.
+
+```{r}
+arrivals[["city"]] <- gsub("\\.", " ", arrivals[["city"]])
+```
+
+The final product is thus:
+
+```{r echo=FALSE}
+knitr::kable(arrivals)
+```
+
+# Analysis
+
+At first, comparing the delays as they are seems the wisest thing to do, until you realize the sheer difference in total flights between ALASKA and AM WEST.
+
+```{r}
+barplot(as.matrix(select(arrivals, contains("delayed"))),
+        beside=T, ylim=c(0,500), xlab="Airlines and Cities",
+        ylab="Total Delayed Flights",
+        main="Total Delayed Flights by Airline and City",
+        legend.text=arrivals[[1]], args.legend=list(x="topright"))
+```
+
+A better comparison would be to compare them as percentages of total flights. To do this, we have to make another tibble and modify the values in it.
+
+First we're going to make a new tibble named "arrivals.perc" and select out from the arrivals tibble the city column and all columns with the word delay. From there, we are going to change the values for the delayed columns in arrivals.perc to be numbers between 0 and 100. To do this, we need to take the number present in these rows already, and then divide those by the number provided by a __rowSums()__ function. In the rowSums function we will be adding the values under all columns bearing the name "ALASKA", and then "AM WEST", and applying it to the proper delayed column.
+
+```{r}
+arrivals.perc <- select(arrivals, c(city,contains("delay")))
+arrivals.perc[,"ALASKA - delayed"] <- (arrivals.perc[,"ALASKA - delayed"]/rowSums(select(arrivals, contains("ALASKA"))))*100
+arrivals.perc[,"AM WEST - delayed"] <- (arrivals.perc[,"AM WEST - delayed"]/rowSums(select(arrivals, contains("AM WEST"))))*100
+```
+
+```{r echo=FALSE}
+arrivals.perc
+```
+
+The resulting bar graph tells a much more interesting story.
+
+```{r}
+barplot(as.matrix(arrivals.perc[,2:3]), beside=T,
+        ylim=c(0,100), xlab="Airlines and Cities",
+        ylab="Percentage of Flights Delayed",
+        main="Delayed Flights as Percent Of Total Flights by Airline and City", 
+        legend.text=arrivals.perc[[1]], args.legend=list(x="topright"))
+```
+
+Even when accounting for the larger number of flights, AM WEST still has significantly more delayed flights. The previous chart made it seem as if Phoenix had been the city receiving most delays, when in truth, it was actually San Francisco, followed closely by Seattle. Looking at both charts, we can see a similar trend in the cities that cause the most issues and the least in general for each airline, but with AM WEST, the delays are amplified. If it were simply a matter of the airports in these cities being consistently troublesome, the percentages would be similar.
+
+```{r}
+sum(select(arrivals, contains("WEST")))/sum(select(arrivals, contains("ALASKA")))
+```
+
+AM WEST has almost twice the number of flights as ALASKA, so we'd expect there to be more delays overall, but the percentages should be near identical for total delays. Because it is not, we can come to the conclusion safely that this is an issue on AM WEST's behalf. We can also safely come to the conclusion that if you are waiting for a plane from AM WEST or ALASKA in San Francisco, there's about a 16 to 30% chance your flight will be delayed. If you want to reduce the chance of your flight being delayed and have to pick one of these two airlines, your best bet according to this data will consistently be ALASKA.
+
+## Afterthoughts
+
+While the above conclusion is sound, having information regarding the length of delays would make it easier to discern which airline might be the better pick for each city's airport, the better airline to take overall, and the average time delayed for each city's airport.
