@@ -2,6 +2,7 @@
 
 * __readme.md__ - This file, explaining the other files.
 * __arrivals.csv__ - The CSV made based off of the assignment.
+* __gabartomeoDATA607Week05.rmd__ - The assignment.
 
 # Assignment
 
