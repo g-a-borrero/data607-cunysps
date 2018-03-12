@@ -1,6 +1,10 @@
 # Files
 
 * __readme.md__ - This file, explaining other files.
+* __pokemon_proj02.csv__ - CSV of my chosen messy data set on Pokemon.
+* __justinHermanDataSet.csv__ - CSV provided by a classmate.
+* __youngkoungKimDataSet.csv__ - CSV provided by a classmate.
+* __gbartomeoDATA607project02.rmd__ - Project 02 assignment.
 
 # Assignment
 
