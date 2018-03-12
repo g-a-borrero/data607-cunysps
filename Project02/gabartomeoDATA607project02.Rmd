@@ -1,0 +1,485 @@
+---
+title: "gabartomeoDATA607project02"
+author: "Gabrielle Bartomeo"
+date: "March 10, 2018"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyr)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(plotly)
+options(warn = -1)
+```
+
+# File One: Pokemon
+
+## Bring the file into R
+
+Bringing the file into R is the most important of all the steps, as we cannot work with the file unless we have access to it in R in the first place.
+
+```{r}
+pokemonFile <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Project02/pokemon_proj02.csv"
+pokemon <- read.csv(pokemonFile, encoding = "UTF-8", stringsAsFactors = F)
+```
+
+## Reformat the CSV so it's easier to read
+
+Next we want to reformat the CSV. The most glaring issue is that the rows and columns have been swapped, with the columns bearing names that are actually values instead of variables. Our best bet is to make the data into a tibble and change it from there.
+
+```{r}
+pokemon <- as.data.frame(t(pokemon), stringsAsFactors = F)
+pokemon <- as_tibble(pokemon)
+pokemon <- rownames_to_column(pokemon)
+head(pokemon)
+```
+
+By using the tranpose (here, written as __t()__) function, we have swapped the rows and columns. The __rownames_to_column()__ function allows us to make the abilities into a column once more instead of being the names of the rows. From there, it's about changing the first row to be more readable, and then into column names. We'll be substituting out the underscores into spaces, making sure units of measurement are clear, and rearranging the column order to be clearer.
+
+```{r}
+pokemon[1,] <- gsub("_", " ", pokemon[1,])
+pokemon[1,] <- gsub("\\bsp\\b", "special", pokemon[1,])
+pokemon[1,1] <- "abilities"
+pokemon[1,39] <- "weight (kg)"
+pokemon[1,28] <- "height (m)"
+pokemon[1,25] <- "classification"
+pokemon <- select(pokemon, 31, 33, everything())
+head(pokemon)
+```
+
+Then it's a matter of updating the column names to be the first row, and removing it.
+
+```{r}
+colnames(pokemon) <- pokemon[1,]
+pokemon <- pokemon[-1,]
+head(pokemon)
+```
+
+Next we have to fix the abilities row. It had originally been a list of strings and we need to bring that back. We'll need to remove the initial X and any trailing numbers, and replace the periods with either a comma, a space, or an empty string.
+
+```{r}
+pokemon[["abilities"]] <- gsub("(\\bX\\b)|\\d", "", pokemon[["abilities"]])
+pokemon[["abilities"]] <- gsub("(^\\.+)|(\\.+$)", "", pokemon[["abilities"]])
+pokemon[["abilities"]] <- gsub("\\.{4}", ",", pokemon[["abilities"]])
+pokemon[["abilities"]] <- gsub("\\.", " ", pokemon[["abilities"]])
+```
+
+Then comes making the lists, which results in the abilities column having lists as values.
+
+```{r}
+pokemon[["abilities"]] <- lapply(pokemon[["abilities"]], strsplit, ",")
+pokemon[["abilities"]] <- sapply(pokemon[["abilities"]], unlist, recursive=F, simplify=F)
+```
+
+And then, there are a number of columns that are given as characters but are actually number variables and we need to modify them as such. The only numeric column we will not be doing this to is the pokedex number.
+
+```{r}
+pokemon[,c(4:26, 28:31, 33:36, 39:41)] <- lapply(pokemon[,c(4:26, 28:31, 33:36, 39:41)], as.numeric)
+```
+
+Now we are able to work with the data.
+
+## Analyzing the data
+
+In order to analyze the data, we'll need to pick out the data that's numeric and normalize it using the __scale()__ function. Then we'll remove all rows with NAs.
+
+```{r}
+invisible(gc(verbose=FALSE))
+pokemon_num_vars <- sapply(pokemon, is.numeric)
+working.pokemon <- na.omit(pokemon)
+working.pokemon[pokemon_num_vars] <- lapply(working.pokemon[pokemon_num_vars], scale)
+working.pokemon <- na.omit(working.pokemon)
+summary(working.pokemon[pokemon_num_vars])
+```
+
+From here, it's a matter of comparing variables with weight. In my opinion, something like height, hp (health points), defense, or special defense should make a Pokemon weigh more. My reasoning for height is simply because the taller a thing is, typically the more it weighs. For the latter three variables, in video games, being able to withstand attacks is called being "tanky." Therefore, it would reason these "tanky" variables might play a role in a Pokemon's likelihood to weigh more.
+
+```{r}
+invisible(gc(verbose=FALSE))
+cbPalette <- c("Height (m)"="#999999", "HP"="#E69F00", "Defense"="#56B4E9", "Special Defense"="#009E73", "Generation" = "#F0E442", "Speed"="#0072B2", "Attack"="#D55E00", "Special Attack"="#CC79A7")
+
+ggplot(working.pokemon, aes(x=get("weight (kg)"), shape=1, alpha=0.02)) +
+  geom_point(aes(y=get("height (m)"), color="Height (m)")) +
+  geom_point(aes(y=get("hp"), color="HP")) +
+  geom_point(aes(y=get("defense"), color="Defense")) +
+  geom_point(aes(y=get("special defense"), color="Special Defense")) +
+  labs(x="Normalized Weight (kg)", y="Z-Score of Various Variables", title="Normalized Pokemon Weight as it Compares to Various Variables") +
+  scale_colour_manual(values = cbPalette) +
+  scale_shape_identity()
+
+ggplot(working.pokemon, aes(x=get("weight (kg)"), shape=1, alpha=0.5)) +
+  geom_line(aes(y=get("height (m)"), color="Height (m)")) +
+  geom_line(aes(y=get("hp"), color="HP")) +
+  geom_line(aes(y=get("defense"), color="Defense")) +
+  geom_line(aes(y=get("special defense"), color="Special Defense")) +
+  labs(x="Normalized Weight (kg)", y="Z-Score of Various Variables", title="Normalized Pokemon Weight as it Compares to Various Variables") +
+  scale_colour_manual(values = cbPalette) +
+  scale_shape_identity()
+
+```
+
+Based on the above, it can be safely said that these four variables do not have any direct correlation with weight. What of the other three stats, then? Attack, Special Attack, and Speed? Do they have a correlation with weight?
+
+```{r}
+ggplot(working.pokemon, aes(x=get("weight (kg)"), shape=1, alpha=0.02)) +
+  geom_point(aes(y=get("attack"), color="Attack")) +
+  geom_point(aes(y=get("special attack"), color="Special Attack")) +
+  geom_point(aes(y=get("speed"), color="Speed")) +
+  labs(x="Normalized Weight (kg)", y="Z-Score of Various Variables", title="Normalized Pokemon Weight as it Compares to Various Variables") +
+  scale_colour_manual(values = cbPalette) +
+  scale_shape_identity()
+
+ggplot(working.pokemon, aes(x=get("weight (kg)"), shape=1, alpha=0.5)) +
+  geom_line(aes(y=get("attack"), color="Attack")) +
+  geom_line(aes(y=get("special attack"), color="Special Attack")) +
+  geom_line(aes(y=get("speed"), color="Speed")) +
+  labs(x="Normalized Weight (kg)", y="Z-Score of Various Variables", title="Normalized Pokemon Weight as it Compares to Various Variables") +
+  scale_colour_manual(values = cbPalette) +
+  scale_shape_identity()
+```
+
+```{r echo=FALSE}
+invisible(gc(verbose=FALSE))
+```
+
+As we can see, there is no correlation between attack, special attack, or speed and weight. 
+
+### Do any of the types correlate with weight?
+
+Given the massive failing of finding a stat that correlates with weight, the next check would be typing.
+
+```{r}
+pokemon_type1_plot <- ggplot(working.pokemon, aes(get("weight (kg)"), group=get("type1"), color=get("type1"))) +
+  geom_density() +
+  labs(x="Weight (kg)", y="Density", title="Normalized Pokemon Weights by Pokemon Type", color="Types")
+ggplotly(pokemon_type1_plot)
+```
+
+```{r echo=FALSE}
+rm(pokemon_type1_plot)
+invisible(gc(verbose=FALSE))
+```
+
+It doesn't appear any of the types are normally distributed by weight.
+
+### Do any of the generations correlate with weight?
+
+Can we find a generation of Pokemon that correlates with weight, if we cannot find a type that does?
+
+```{r}
+pokemon_gen_plot <- ggplot(working.pokemon, aes(get("weight (kg)"), group=get("generation"), color=get("generation"))) +
+  geom_density() +
+  labs(x="Normalized Weight (kg)", y="Density", title="Normalized Pokemon Weights by Generation", color="Normalized Generations")
+ggplotly(pokemon_gen_plot)
+```
+
+```{r echo=FALSE}
+rm(pokemon_gen_plot)
+invisible(gc(verbose=FALSE))
+```
+
+At first blush, there seems there is no correlation between weight and any generation. Looking at a scatterplot reveals...
+
+```{r}
+ggplot(pokemon, aes(get("generation"), get("weight (kg)"), group=get("generation"), color=get("generation"))) +
+  geom_point() +
+  labs(x="Generation", y="Weight (kg)", title="Pokemon Weights by Generation", color="Generation")
+```
+
+```{r echo=FALSE}
+rm(pokemon)
+rm(working.pokemon)
+rm(pokemon_num_vars)
+rm()
+invisible(gc(verbose=FALSE))
+```
+
+... there is no correlation. Each generation has a sizeable amount of light-weight Pokemon, but no generation seems to have a direct correlation with weight.
+
+## Conclusion
+
+There is no direct correlation between a Pokemon's weight and their height, their stats, their type, or their generation. Further investigation into decisions made regarding Pokemon weight is needed, given that a Wailord - based off of a real-life blue whale - is around half the weight of a Mudsdale - based off of a real-life Clydesdale.
+
+# File Two: Association Golf Outing
+
+This dataset was provided by Justin Herman on his Discussion 5 post.
+
+## Bring the file into R
+
+Bringing the file into R is the most important of all the steps, as we cannot work with the file unless we have access to it in R in the first place.
+
+```{r}
+justinFile <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Project02/justinHermanDataSet.csv"
+golf <- read.csv(justinFile, encoding = "UTF-8", stringsAsFactors = F, na.strings = c("", " ", "NA"))
+```
+
+## Reformat the CSV so it's easier to read
+
+This file needs a lot of work. To start with, the description of the file is inside of it, so let's take that out and make it its own thing.
+
+```{r}
+golf_desc <- names(golf)[1]
+golf_desc <- paste(golf_desc, golf[1,1], golf[2,4], golf[2,6])
+golf_desc <- gsub("\\.", " ", golf_desc)
+golf_desc <- gsub(" {2,}", " ", golf_desc)
+golf_desc <- gsub("^(\\w)", "\\U\\1", golf_desc, perl=T)
+golf_desc
+```
+
+With that out of the way, we can remove those lines and get into the real set of data. We'll want to remove empty rows and columns and get the proper column names set up.
+
+```{r}
+golf <- golf[4:125,]
+na_reduction <- function(dat) {
+  dat %>%
+    filter(Reduce(`+`, lapply(., is.na)) != ncol(.)) %>%
+    select_if(~sum(!is.na(.)) > 0)
+}
+golf <- na_reduction(golf)
+colnames(golf) <- golf[1,]
+golf <- golf[2:length(golf[,1]),]
+golf <- na_reduction(golf)
+golf <- lapply(golf, trimws)
+golf <- lapply(golf, gsub, pattern=" {2,}", replacement=" ", perl=T)
+golf <- as_tibble(golf)
+
+# We'll be putting the years in here... I know there's a neater way to do this.
+
+golf_years <- filter(golf, is.na(quantity) & is.na(Cost) & is.na(Status))
+golf["Year"] <- rep(NA, times=length(golf[,1]))
+golf[["Year"]][(match(golf_years[["Item"]][1], golf[["Item"]])+1):(match(golf_years[["Item"]][2], golf[["Item"]])-1)] <- golf_years[["Item"]][1]
+golf[["Year"]][(match(golf_years[["Item"]][2], golf[["Item"]])+1):(match(golf_years[["Item"]][3], golf[["Item"]])-1)] <- golf_years[["Item"]][2]
+golf[["Year"]][(match(golf_years[["Item"]][3], golf[["Item"]])+1):(match(golf_years[["Item"]][4], golf[["Item"]])-1)] <- golf_years[["Item"]][3]
+golf[["Year"]][(match(golf_years[["Item"]][4], golf[["Item"]])+1):(match(golf_years[["Item"]][5], golf[["Item"]])-1)] <- golf_years[["Item"]][4]
+golf[["Year"]][(match(golf_years[["Item"]][5], golf[["Item"]])+1):(match(golf_years[["Item"]][6], golf[["Item"]])-1)] <- golf_years[["Item"]][5]
+golf[["Year"]][(match(golf_years[["Item"]][6], golf[["Item"]])+1):(match(golf_years[["Item"]][7], golf[["Item"]])-1)] <- golf_years[["Item"]][6]
+golf[["Year"]][(match(golf_years[["Item"]][7], golf[["Item"]])+1):(match(golf_years[["Item"]][8], golf[["Item"]])-1)] <- golf_years[["Item"]][7]
+golf[["Year"]][(match(golf_years[["Item"]][8], golf[["Item"]])+1):nrow(golf)] <- golf_years[["Item"]][8]
+
+# Removing the year rows
+golf <- filter(golf, !is.na(quantity) & !is.na(Cost) & !is.na(Status))
+```
+
+Next we're going to want to make the numeric columns numeric. As a note, there is an item in the Cost column that has the word "each". Looking up the cost of golf sets told me that spending $500 for a golf set isn't unheard of, and all the other items in the list seem to be based on total price rather than the price of each item, so the best bet for that row is to change it from "20 each" to "80", which is 20 (each) multiplied by the quantity, 4.
+
+```{r}
+golf[1, "Cost"] <- 80
+golf[["quantity"]] <- as.numeric(golf[["quantity"]])
+golf[["Cost"]] <- as.numeric(golf[["Cost"]])
+```
+
+We should pretty up the Status row as well. A little bit of googling led me to find there is a company named "Tukuru Technologies", which seems to be miswritten or written inconsistently. While the TBD is likely important to whomever this sheet belongs, it's the only one like it, and giving it its own dedicated column seems pointless. Given the consistency of Tukuru Technologies delivering their items (they're all over this data set!) it's safe to say it will be delivered. We also need to change the values "who" into "na" and the explicit column into "Joe".
+
+```{r}
+golf[["Status"]] <- gsub("[Ff]rom ", "", golf[["Status"]])
+golf[["Status"]] <- gsub("Tuk.*", "Tukuru Technologies", golf[["Status"]])
+golf[["Status"]][64] <- NA
+golf[["Status"]][86] <- "Joe"
+```
+
+With that, we have a data set we can work with.
+
+```{r echo=FALSE}
+head(golf)
+```
+
+## Analysis
+
+Justin suggested a couple of analysis that could be performed. They were:
+
+* Total cost of items raffled by year
+* Amount of items raffled by year
+* Person who donated the most items by year
+
+### Total Cost of Items Raffled by Year
+
+```{r}
+golf_year_cumsum <- c(
+  "2016" = colSums(filter(golf, Year==2016)["Cost"], na.rm = T),
+  "2015" = colSums(filter(golf, Year==2015)["Cost"], na.rm = T),
+  "2014" = colSums(filter(golf, Year==2014)["Cost"], na.rm = T),
+  "2013" = colSums(filter(golf, Year==2013)["Cost"], na.rm = T),
+  "2012" = colSums(filter(golf, Year==2012)["Cost"], na.rm = T),
+  "2011" = colSums(filter(golf, Year==2011)["Cost"], na.rm = T),
+  "2010" = colSums(filter(golf, Year==2010)["Cost"], na.rm = T),
+  "2009" = colSums(filter(golf, Year==2009)["Cost"], na.rm = T)
+)
+golf_year_cumsum <- as.data.frame(golf_year_cumsum)
+rownames(golf_year_cumsum) <- gsub("\\..*", "", rownames(golf_year_cumsum))
+names(golf_year_cumsum) <- c("Total Cost in USD")
+knitr::kable(golf_year_cumsum, caption="Total Cost of Raffled Items in USD by Year")
+```
+
+```{r echo=FALSE}
+rm(golf_year_cumsum)
+invisible(gc(verbose=FALSE))
+```
+
+### Total Items Raffled by Year
+
+```{r}
+golf_year_items_cumsum <- c(
+  "2016" = colSums(filter(golf, Year==2016)["quantity"], na.rm = T),
+  "2015" = colSums(filter(golf, Year==2015)["quantity"], na.rm = T),
+  "2014" = colSums(filter(golf, Year==2014)["quantity"], na.rm = T),
+  "2013" = colSums(filter(golf, Year==2013)["quantity"], na.rm = T),
+  "2012" = colSums(filter(golf, Year==2012)["quantity"], na.rm = T),
+  "2011" = colSums(filter(golf, Year==2011)["quantity"], na.rm = T),
+  "2010" = colSums(filter(golf, Year==2010)["quantity"], na.rm = T),
+  "2009" = colSums(filter(golf, Year==2009)["quantity"], na.rm = T)
+)
+golf_year_items_cumsum <- as.data.frame(golf_year_items_cumsum)
+rownames(golf_year_items_cumsum) <- gsub("\\..*", "", rownames(golf_year_items_cumsum))
+names(golf_year_items_cumsum) <- c("Number of Items Raffled")
+knitr::kable(golf_year_items_cumsum, caption="Number of Items Raffled by Year")
+```
+
+```{r echo=FALSE}
+rm(golf_year_items_cumsum)
+invisible(gc(verbose=FALSE))
+```
+
+### Most Generous Donor by Year
+
+```{r}
+golf_year_donor_cumsum <- c(
+  "2016" = count(filter(golf, Year==2016), Status, sort=T)[1,1],
+  "2015" = count(filter(golf, Year==2015), Status, sort=T)[1,1],
+  "2014" = count(filter(golf, Year==2014), Status, sort=T)[1,1],
+  "2013" = count(filter(golf, Year==2013), Status, sort=T)[1,1],
+  "2012" = count(filter(golf, Year==2012), Status, sort=T)[1,1],
+  "2011" = count(filter(golf, Year==2011), Status, sort=T)[1,1],
+  "2010" = count(filter(golf, Year==2010), Status, sort=T)[1,1],
+  "2009" = count(filter(golf, Year==2009), Status, sort=T)[1,1]
+)
+names(golf_year_donor_cumsum) <- gsub("\\..*", "", names(golf_year_donor_cumsum))
+golf_year_donor_cumsum <- as_tibble(golf_year_donor_cumsum)
+golf_year_donor_cumsum <- gather(golf_year_donor_cumsum)
+names(golf_year_donor_cumsum) <- c("Year", "Donor")
+knitr::kable(golf_year_donor_cumsum, caption="Most Generous Donor by Year")
+```
+
+```{r echo=FALSE}
+rm(golf_year_donor_cumsum)
+rm(golf_years)
+rm(golf)
+rm(golf_desc)
+invisible(gc(verbose=FALSE))
+```
+
+# File Three: Stanford Mass Shootings in America (MSA)
+
+This dataset was provided by Youngkoung Kim on his Discussion 5 post.
+
+## Bring the file into R
+
+Bringing the file into R is the most important of all the steps, as we cannot work with the file unless we have access to it in R in the first place.
+
+```{r}
+youngkoungFile <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Project02/youngkoungKimDataSet.csv"
+msa <- read.csv(youngkoungFile, encoding = "UTF-8", stringsAsFactors = F, na.strings = c("", " ", "NA"))
+```
+
+## Reformatting the CSV
+
+While the CSV offers a lot of data, we do not need all the data it offers for the analysis we will be performing.
+
+```{r}
+msa <- as_tibble(msa)
+msa <- select(msa, Title, City, State, Average.Shooter.Age, Total.Number.of.Guns, Place.Type, Possible.Motive...General)
+```
+
+There's the matter of making sure the appropriate format is applied to all the variables in the CSV.
+
+```{r}
+msa[["Average.Shooter.Age"]] <- as.numeric(msa[["Average.Shooter.Age"]])
+msa[["Total.Number.of.Guns"]] <- as.numeric(msa[["Total.Number.of.Guns"]])
+```
+
+After checking the table, I noticed some reduncies we can fix.
+
+```{r}
+msa[["Place.Type"]] <- gsub("Secondary School", "Secondary school", msa[["Place.Type"]], perl=T)
+msa[["Place.Type"]] <- gsub("[cC]afe.*", "cafe", msa[["Place.Type"]], perl=T)
+msa[["Place.Type"]] <- gsub("Home", "home", msa[["Place.Type"]], perl=T)
+msa[["Place.Type"]] <- gsub("Wildness", "Wilderness", msa[["Place.Type"]], perl=T)
+msa[["Place.Type"]] <- gsub("Venue", "venue", msa[["Place.Type"]], perl=T)
+```
+
+Now we're ready to work with the data.
+
+## Analysis
+
+```{r}
+ggplot(msa, aes(x=get("Place.Type"), fill=get("Place.Type"))) +
+  geom_bar() +
+  labs(x="Places", fill="Places", title="Total Shootings by Place") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+With this, we can see most shootings occur locally; the shooter will perform their shooting in their home or neighborhood and does not venture far from their origin.
+
+```{r}
+ggplot(msa, aes(x=get("Average.Shooter.Age"), y=get("Total.Number.of.Guns"), fill=get("Average.Shooter.Age"))) +
+  geom_bar(stat="identity") +
+  labs(x="Average Shooter Age", y="Total Number of Guns", title="Total Number of Guns of the Average Shooter by Age")
+```
+
+This chart shows up until their mid-forties, a shooter is more likely to carry more than a couple of guns.
+
+
+```{r}
+ggplot(msa, aes(x=get("State"), fill=get("State"))) +
+  geom_bar() +
+  labs(x="State", title="Total Number of Shootings by State", fill="State") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+We can see here that the state with the most shootings is actually California... hypothesis, perhaps it's Los Angeles in particular. Florida appears to come in second, with Texas coming in third. I think it might be Tampa for Florida, and perhaps San Antonio for Texas. Let's find out.
+
+### California's Shooting Locations
+
+```{r}
+ggplot(filter(msa, State=="California"), aes(x=get("City"), fill=get("City"))) +
+  geom_bar() +
+  labs(x="City", fill="City") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+This plot confirms my hypothesis that the city with the most shootings in California is indeed Los Angeles.
+
+### Florida's Shooting Locations
+
+```{r}
+ggplot(filter(msa, State=="Florida"), aes(x=get("City"), fill=get("City"))) +
+  geom_bar() +
+  labs(x="City", fill="City") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+This plot confirms my hypothesis that the city with the most shootings in Florida is indeed Tampa.
+
+### Texas's Shooting Locations
+
+```{r}
+ggplot(filter(msa, State=="Texas"), aes(x=get("City"), fill=get("City"))) +
+  geom_bar() +
+  labs(x="City", fill="City") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())
+```
+
+This plot disproves my hypothesis that the city with the most shootings in Texas are in San Antonio - most shootings in Texas happen in Killeen.
+
+## Conclusion
+
+Shooters in America are more likely to perform their shooting in their neighborhood or home, and if they're under about 45 they're likely to be carrying multiple guns. Shootings are more likely to occur in California, Florida, and Texas; from these states, specifically in Los Angeles, California, Tampa, Florida, and Killeen, Texas.
