@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<Books>
+	<book>
+		<Title>Leafcutter Ants: Civilization by Instinct</Title>
+		<Author>Bert Hölldobler</Author>
+		<Author>E.O. Wilson</Author>
+		<ISBN>978-0-393-33868-3</ISBN>
+		<Pages>192</Pages>
+	</book>
+	<book>
+		<Title>Honeybee Democracy</Title>
+		<Author>Thomas D. Seeley</Author>
+		<ISBN>978-0-691-14721-5</ISBN>
+		<Pages>280</Pages>
+	</book>
+	<book>
+		<Title>Sweetness and Light: The Mysterious History of the Honeybee</Title>
+		<Author>Hattie Ellis</Author>
+		<ISBN>978-0-307-54786-6</ISBN>
+		<Pages>258</Pages>
+	</book>
+</Books>

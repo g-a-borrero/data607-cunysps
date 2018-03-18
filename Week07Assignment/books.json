@@ -1,0 +1,27 @@
+{
+  "Books": {
+    "book": [
+      {
+        "Title": "Leafcutter Ants: Civilization by Instinct",
+        "Author": [
+          "Bert Hölldobler",
+          "E.O. Wilson"
+        ],
+        "ISBN": "978-0-393-33868-3",
+        "Pages": "192"
+      },
+      {
+        "Title": "Honeybee Democracy",
+        "Author": "Thomas D. Seeley",
+        "ISBN": "978-0-691-14721-5",
+        "Pages": "280"
+      },
+      {
+        "Title": "Sweetness and Light: The Mysterious History of the Honeybee",
+        "Author": "Hattie Ellis",
+        "ISBN": "978-0-307-54786-6",
+        "Pages": "258"
+      }
+    ]
+  }
+}
