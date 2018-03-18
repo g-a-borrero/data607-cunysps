@@ -1,0 +1,65 @@
+---
+title: "gabartomeoWeek07"
+author: "Gabrielle Bartomeo"
+date: "March 18, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(XML)
+library(RCurl)
+library(rlist)
+library(jsonlite)
+booksHTML <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Week07Assignment/books.html"
+booksXML <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Week07Assignment/books.xml"
+booksJSON <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Week07Assignment/books.json"
+```
+
+# HTML
+
+```{r}
+booksHTML <- getURL(booksHTML, .opts = list(ssl.verifypeer = FALSE))
+dfHTML <- readHTMLTable(booksHTML, header=T)
+dfHTML <- dfHTML[[1]]
+knitr::kable(dfHTML)
+```
+
+
+# XML
+
+```{r}
+booksXML <- getURL(booksXML)
+booksXML <- xmlTreeParse(booksXML, useInternalNodes = T, encoding = "UTF-8")
+dfXML <- xmlToList(booksXML)
+dfXMLtemp <- as.data.frame(dfXML[[1]], stringsAsFactors = F)
+dfXMLtemp["Author"] <- paste(dfXMLtemp["Author"], sep=", ", dfXMLtemp["Author.1"])
+dfXMLtemp <- dfXMLtemp[, -which(names(dfXMLtemp) %in% c("Author.1"))]
+dfXMLtemp <- rbind(dfXMLtemp, dfXML[[2]], dfXML[[3]])
+dfXML <- dfXMLtemp
+rm(dfXMLtemp)
+knitr::kable(dfXML)
+```
+
+
+# JSON
+
+```{r}
+dfJSON <- fromJSON(booksJSON)
+dfJSON <- dfJSON[[1]][[1]]
+knitr::kable(dfJSON)
+```
+
+# Similarities versus Differences
+
+## Coding
+
+When it came to coding, the easiest to get in was the JSON file, by far. It was four lines of code - one of which being a single library! - and was fairly intuitive. Second easiest was the HTML file, although I admit it would have been more difficult if I hadn't combined the authors for the first book together in a cell. Lastly was the XML file. Importing XML... it doesn't seem that the current packages out there really like there being duplicate tags.
+
+## Final Product
+
+All of the tables have the same titles, authors, ISBNs, and Pages. The HTML has a different column name for the authors, "Author(s)", while the other two are "Author". When it comes to the content in the author columns, the multiple authors are where the differences exist. For the HTML table, I manually put them together in the HTML file, so when it was brought over to R, that was maintained. I had to use the __paste__ function when dealing with the XML import to combine the authors, which results in a near-manual way to get the same as the HTML column. Lastly, JSON took care of everything on its own.
+
+## Conclusion
+
+The most comfortable data type of the three is, easily, JSON, when it comes to R.
