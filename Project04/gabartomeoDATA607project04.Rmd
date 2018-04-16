@@ -1,0 +1,299 @@
+---
+title: "gabartomeoDATA607project04"
+author: "Gabrielle Bartomeo"
+date: "April 12, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tm)
+library(qdap)
+gabbyPath <- "D:/CUNY SPS Data Science Masters/DATA 607/DATA 607 Project 04"
+gabbyHam <- paste(gabbyPath, "easy_ham", sep="/")
+gabbySpam <- paste(gabbyPath, "spam", sep="/")
+gabbyHam2 <- paste(gabbyPath, "easy_ham_2", sep="/")
+gabbyHam3 <- paste(gabbyPath, "hard_ham", sep="/")
+gabbySpam2 <- paste(gabbyPath, "spam_2", sep="/")
+toSpace <- content_transformer(function(x, pattern) {return (gsub(pattern, " ", x))})
+gsubRemove <- content_transformer(function(x, pattern) gsub(pattern, "", x, perl=TRUE))
+```
+
+# Preliminary work
+
+We've outlined the paths for the files and also created two functions, toSpace (which makes characters turn into spaces) and gsubRemove (which makes characters removed completely). Here are the corpuses used:
+
+* Training Ham: "20021010_easy_ham.tar.bz2"
+* Training Spam: "20021010_spam.tar.bz2"
+* Easy Ham: "20030228_easy_ham_2.tar.bz2"
+* Hard Ham: "20030228_hard_ham.tar.bz2"
+* Spam: "20050311_spam_2.tar.bz2"
+
+# Training our Ham!
+
+```{r}
+hamTrain <- VCorpus(DirSource(c(gabbyHam), encoding = "UTF-8"),readerControl = list(language = "english"))
+hamTrain <- tm_map(hamTrain, toSpace, "[^[:graph:]]")
+hamTrain <- tm_map(hamTrain, stripWhitespace)
+hamTrain <- tm_map(hamTrain, content_transformer(tolower))
+hamTrain <- tm_map(hamTrain, removeWords, c(stopwords("english"), stopwords("SMART"),
+    "sat", "sun", "mon", "tue", "wed", "thu", "fri",
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
+    ))
+hamTrain <- hamTrain %>%
+  tm_map(gsubRemove, "\\<.*\\>") %>%
+  tm_map(gsubRemove, "\\<\\w+") %>%
+  tm_map(gsubRemove, "\\w+\\=?.*\\>") %>%
+  tm_map(gsubRemove, "\\w+\\=[\\w\\d]+") %>%
+  tm_map(gsubRemove, "(\\d+\\.){1,}\\d+") %>%
+  tm_map(gsubRemove, "[\\.]{2,}") %>%
+  tm_map(gsubRemove, "&\\w+") %>%
+  tm_map(gsubRemove, "[a-f]{6,}") %>%
+  tm_map(gsubRemove, "\\.($| )") %>%
+  tm_map(gsubRemove, "^\\.") %>%
+  tm_map(gsubRemove, "\\/{1,2}") %>%
+  tm_map(gsubRemove, "http:[\\w\\d\\.\\-]+") %>%
+  tm_map(gsubRemove, "[\\-\\?\\!\\#\\\\\"\\,\\;\\:\\)\\(\\[\\]\\*\\=\\+\\%\\d\\@\\_]{1,}") %>%
+  tm_map(gsubRemove, "(arial|verdana|helvetica|sansserif|tahoma|fontfamily|stylefontsize|content|texthtml|textplain|\\w+encoding|charsetiso|imap|localhost|received|e?smtp|type|color|mime|src)") %>%
+  tm_map(gsubRemove, "(\\w+\\.){1,}(org|com|net|gov|edu|ie|cn|tw|insuranceiq|labs|xent|redhat|mailmanlistinfoexmhusers|listman|exmh|loop|listman|redhatpostfix|corp)") %>%
+  tm_map(gsubRemove, "((\\.\\w+)|(\\w+\\.))") %>%
+  tm_map(gsubRemove, ".*?(\\w)\\1{2,}.*?")
+hamTrain <- DocumentTermMatrix(hamTrain)
+hamMostFreq <- names(sort(table(unlist(lapply(findMostFreqTerms(hamTrain), names))), decreasing = TRUE)[1:20])
+hamAssocs <- lapply(hamMostFreq, function (x) findAssocs(hamTrain, x, 0.75))
+hamAssocs <- lapply(unlist(hamAssocs), function(x) ifelse(length(x)>0, x, NA))
+hamMostFreq <- unique(gsub("\\.\\w+", "", names(hamAssocs), perl=TRUE))
+```
+
+To help in preventing false positives, we've trained some ham associations. We filtered out a variety of characters and patterns such as websites, hexadecimals, HTML tags, e-mails, and excessively repeating characters (read: one or more repetitions). From there, we found which words are most frequent, and how those words associate with other words.
+
+# Training our Spam!
+
+```{r}
+spamTrain <- VCorpus(DirSource(c(gabbySpam), encoding = "UTF-8"),readerControl = list(language = "english"))
+spamTrain <- tm_map(spamTrain, toSpace, "[^[:graph:]]")
+spamTrain <- tm_map(spamTrain, stripWhitespace)
+spamTrain <- tm_map(spamTrain, content_transformer(tolower))
+spamTrain <- tm_map(spamTrain, removeWords, c(stopwords("english"), stopwords("SMART"),
+    "sat", "sun", "mon", "tue", "wed", "thu", "fri",
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
+    ))
+spamTrain <- spamTrain %>%
+  tm_map(gsubRemove, "\\<.*\\>") %>%
+  tm_map(gsubRemove, "\\<\\w+") %>%
+  tm_map(gsubRemove, "\\w+\\=?.*\\>") %>%
+  tm_map(gsubRemove, "\\w+\\=[\\w\\d]+") %>%
+  tm_map(gsubRemove, "(\\d+\\.){1,}\\d+") %>%
+  tm_map(gsubRemove, "[\\.]{2,}") %>%
+  tm_map(gsubRemove, "&\\w+") %>%
+  tm_map(gsubRemove, "[a-f]{6,}") %>%
+  tm_map(gsubRemove, "\\.($| )") %>%
+  tm_map(gsubRemove, "^\\.") %>%
+  tm_map(gsubRemove, "\\/{1,2}") %>%
+  tm_map(gsubRemove, "http:[\\w\\d\\.\\-]+") %>%
+  tm_map(gsubRemove, "[\\-\\?\\!\\#\\\\\"\\,\\;\\:\\)\\(\\[\\]\\*\\=\\+\\%\\d\\@\\_]{1,}") %>%
+  tm_map(gsubRemove, "(arial|verdana|helvetica|sansserif|tahoma|fontfamily|stylefontsize|content|texthtml|textplain|\\w+encoding|charsetiso|imap|localhost|received|e?smtp|type|color|mime|src)") %>%
+  tm_map(gsubRemove, "(\\w+\\.){1,}(org|com|net|gov|edu|ie|cn|tw|insuranceiq|labs|xent|redhat|mailmanlistinfoexmhusers|listman|exmh|loop|listman|redhatpostfix|corp)") %>%
+  tm_map(gsubRemove, "((\\.\\w+)|(\\w+\\.))") %>%
+  tm_map(gsubRemove, ".*?(\\w)\\1{2,}.*?")
+spamTrain <- DocumentTermMatrix(spamTrain)
+spamMostFreq <- names(sort(table(unlist(lapply(findMostFreqTerms(spamTrain), names))), decreasing = TRUE)[1:20])
+spamAssocs <- lapply(spamMostFreq, function (x) findAssocs(spamTrain, x, 0.75))
+spamAssocs <- lapply(unlist(spamAssocs), function(x) ifelse(length(x)>0, x, NA))
+spamMostFreq <- unique(gsub("\\.[\\w\\'\\.]+", "", names(spamAssocs), perl=TRUE))
+```
+
+The steps done here are the exact same as we did for the set of training ham, except this is going to be our main, the spam associations, for determining whether something is spam.
+
+# Testing out the training sets with each other
+
+```{r}
+spamInHam.training_only <- lapply(spamMostFreq, function (x) findAssocs(hamTrain, x, 0.75))
+spamInHam.training_only <- lapply(unlist(spamInHam.training_only), function(x) ifelse(length(x)>0, x, NA))
+hamInSpam.training_only <- lapply(hamMostFreq, function (x) findAssocs(spamTrain, x, 0.75))
+hamInSpam.training_only <- lapply(unlist(hamInSpam.training_only), function(x) ifelse(length(x)>0, x, NA))
+rm(hamTrain)
+rm(spamTrain)
+```
+
+Let's just make everything a data frame for neatness.
+
+```{r}
+spamAssocs <- as.data.frame(spamAssocs)
+hamAssocs <- as.data.frame(hamAssocs)
+spamInHam.training_only <- as.data.frame(spamInHam.training_only)
+hamInSpam.training_only <- as.data.frame(hamInSpam.training_only)
+```
+
+And let's remove anything in both the ham and spam trained sets that are frequent.
+
+```{r}
+spamAssocs <- setdiff(setdiff(spamAssocs, hamInSpam.training_only), spamInHam.training_only)
+hamAssocs <- setdiff(setdiff(hamAssocs, spamInHam.training_only), hamInSpam.training_only)
+length(names(hamAssocs))
+length(names(spamAssocs))
+```
+
+When we look at the two, we can see that there are far fewer words associated ham than there are for spam. What of the largest correlations?
+
+```{r echo=FALSE}
+rm(spamInHam.training_only)
+rm(hamInSpam.training_only)
+spamMostFreq <- unique(gsub("\\.[\\w\\'\\.]+", "", names(spamAssocs), perl=TRUE))
+hamMostFreq <- unique(gsub("\\.[\\w\\'\\.]+", "", names(hamAssocs), perl=TRUE))
+knitr::kable(t(sort(spamAssocs)), colnames=c("Association"), align=c("c"))
+```
+
+Business and a variety of other words had the highest associations, which leads me to believe that if we follow the word "business" we'll likely find spam.
+
+# Trying it on some easy ham
+
+```{r}
+ham.easy <- VCorpus(DirSource(c(gabbyHam2), encoding = "UTF-8"),readerControl = list(language = "english"))
+ham.easy <- tm_map(ham.easy, toSpace, "[^[:graph:]]")
+ham.easy <- tm_map(ham.easy, stripWhitespace)
+ham.easy <- tm_map(ham.easy, content_transformer(tolower))
+ham.easy <- tm_map(ham.easy, removeWords, c(stopwords("english"), stopwords("SMART"),
+    "sat", "sun", "mon", "tue", "wed", "thu", "fri",
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
+    ))
+ham.easy <- ham.easy %>%
+  tm_map(gsubRemove, "\\<.*\\>") %>%
+  tm_map(gsubRemove, "\\<\\w+") %>%
+  tm_map(gsubRemove, "\\w+\\=?.*\\>") %>%
+  tm_map(gsubRemove, "\\w+\\=[\\w\\d]+") %>%
+  tm_map(gsubRemove, "(\\d+\\.){1,}\\d+") %>%
+  tm_map(gsubRemove, "[\\.]{2,}") %>%
+  tm_map(gsubRemove, "&\\w+") %>%
+  tm_map(gsubRemove, "[a-f]{6,}") %>%
+  tm_map(gsubRemove, "\\.($| )") %>%
+  tm_map(gsubRemove, "^\\.") %>%
+  tm_map(gsubRemove, "\\/{1,2}") %>%
+  tm_map(gsubRemove, "http:[\\w\\d\\.\\-]+") %>%
+  tm_map(gsubRemove, "[\\-\\?\\!\\#\\\\\"\\,\\;\\:\\)\\(\\[\\]\\*\\=\\+\\%\\d\\@\\_]{1,}") %>%
+  tm_map(gsubRemove, "(arial|verdana|helvetica|sansserif|tahoma|fontfamily|stylefontsize|content|texthtml|textplain|\\w+encoding|charsetiso|imap|localhost|received|e?smtp|type|color|mime)") %>%
+  tm_map(gsubRemove, "(\\w+\\.){1,}(org|com|net|gov|edu|ie|cn|tw|insuranceiq|labs|xent|redhat|mailmanlistinfoexmhusers|listman|exmh|loop|listman|redhatpostfix|corp)") %>%
+  tm_map(gsubRemove, "((\\.\\w+)|(\\w+\\.))") %>%
+  tm_map(gsubRemove, ".*?(\\w)\\1{2,}.*?")
+ham.easy <- DocumentTermMatrix(ham.easy)
+```
+
+Here's a new ham set we're going to be trying it on. As with before, we're going to be trimming down some characters, words, and symbols we don't need.
+
+Next, we'll want to throw the spam filters through the ham and see how it holds up. The four that show up again and again are "money", "business", "home", and "text".
+
+```{r}
+spamInHam.easy <- lapply(spamMostFreq, function(x) findAssocs(ham.easy, x, 0.75))
+spamInHam.easy <- t(as.data.frame(unlist(spamInHam.easy)))
+```
+
+If the new set of ham has any of the same associations as the spam, intersecting the two should result in their name being listed, and then they can be compared to that of the spam.
+
+```{r}
+intersect(colnames(spamInHam.easy), names(spamAssocs))
+```
+
+```{r echo=FALSE}
+rm(ham.easy)
+rm(spamInHam.easy)
+```
+
+... only issue is, there is no hint of spam in this ham, surprisingly enough. This means we had no false positives on the ham.
+
+# Trying it on some harder ham
+
+Next, we're going to try out this method on some harder ham. we might get some false positives here, I hypothesize, but only one way to truly find out.
+
+```{r}
+ham.hard <- VCorpus(DirSource(c(gabbyHam3), encoding = "UTF-8"),readerControl = list(language = "english"))
+ham.hard <- tm_map(ham.hard, toSpace, "[^[:graph:]]")
+ham.hard <- tm_map(ham.hard, stripWhitespace)
+ham.hard <- tm_map(ham.hard, content_transformer(tolower))
+ham.hard <- tm_map(ham.hard, removeWords, c(stopwords("english"), stopwords("SMART"),
+    "sat", "sun", "mon", "tue", "wed", "thu", "fri",
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
+    ))
+ham.hard <- ham.hard %>%
+  tm_map(gsubRemove, "\\<.*\\>") %>%
+  tm_map(gsubRemove, "\\<\\w+") %>%
+  tm_map(gsubRemove, "\\w+\\=?.*\\>") %>%
+  tm_map(gsubRemove, "\\w+\\=[\\w\\d]+") %>%
+  tm_map(gsubRemove, "(\\d+\\.){1,}\\d+") %>%
+  tm_map(gsubRemove, "[\\.]{2,}") %>%
+  tm_map(gsubRemove, "&\\w+") %>%
+  tm_map(gsubRemove, "[a-f]{6,}") %>%
+  tm_map(gsubRemove, "\\.($| )") %>%
+  tm_map(gsubRemove, "^\\.") %>%
+  tm_map(gsubRemove, "\\/{1,2}") %>%
+  tm_map(gsubRemove, "http:[\\w\\d\\.\\-]+") %>%
+  tm_map(gsubRemove, "[\\-\\?\\!\\#\\\\\"\\,\\;\\:\\)\\(\\[\\]\\*\\=\\+\\%\\d\\@\\_]{1,}") %>%
+  tm_map(gsubRemove, "(arial|verdana|helvetica|sansserif|tahoma|fontfamily|stylefontsize|content|texthtml|textplain|\\w+encoding|charsetiso|imap|localhost|received|e?smtp|type|color|mime)") %>%
+  tm_map(gsubRemove, "(\\w+\\.){1,}(org|com|net|gov|edu|ie|cn|tw|insuranceiq|labs|xent|redhat|mailmanlistinfoexmhusers|listman|exmh|loop|listman|redhatpostfix|corp)") %>%
+  tm_map(gsubRemove, "((\\.\\w+)|(\\w+\\.))") %>%
+  tm_map(gsubRemove, ".*?(\\w)\\1{2,}.*?")
+ham.hard <- DocumentTermMatrix(ham.hard)
+```
+
+Once again we're slicing up the ham to remove anything unnecessary. And we'll want to check to see if any of the spam-centric words have made their way into our harder ham.
+
+```{r}
+spamInHam.hard <- lapply(spamMostFreq, function(x) findAssocs(ham.hard, x, 0.75))
+unlist(spamInHam.hard)
+```
+
+We have no reason to go further with this current method - none of the spam words we've predetermined are in the ham.
+
+```{r echo=FALSE}
+rm(ham.hard)
+rm(spamInHam.hard)
+```
+
+# Trying it on some spam
+
+```{r}
+spam <- VCorpus(DirSource(c(gabbySpam2), encoding = "UTF-8"),readerControl = list(language = "english"))
+spam <- tm_map(spam, toSpace, "[^[:graph:]]")
+spam <- tm_map(spam, stripWhitespace)
+spam <- tm_map(spam, content_transformer(tolower))
+spam <- tm_map(spam, removeWords, c(stopwords("english"), stopwords("SMART"),
+    "sat", "sun", "mon", "tue", "wed", "thu", "fri",
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"
+    ))
+spam <- spam %>%
+  tm_map(gsubRemove, "\\<.*\\>") %>%
+  tm_map(gsubRemove, "\\<\\w+") %>%
+  tm_map(gsubRemove, "\\w+\\=?.*\\>") %>%
+  tm_map(gsubRemove, "\\w+\\=[\\w\\d]+") %>%
+  tm_map(gsubRemove, "(\\d+\\.){1,}\\d+") %>%
+  tm_map(gsubRemove, "[\\.]{2,}") %>%
+  tm_map(gsubRemove, "&\\w+") %>%
+  tm_map(gsubRemove, "[a-f]{6,}") %>%
+  tm_map(gsubRemove, "\\.($| )") %>%
+  tm_map(gsubRemove, "^\\.") %>%
+  tm_map(gsubRemove, "\\/{1,2}") %>%
+  tm_map(gsubRemove, "http:[\\w\\d\\.\\-]+") %>%
+  tm_map(gsubRemove, "[\\-\\?\\!\\#\\\\\"\\,\\;\\:\\)\\(\\[\\]\\*\\=\\+\\%\\d\\@\\_]{1,}") %>%
+  tm_map(gsubRemove, "(arial|verdana|helvetica|sansserif|tahoma|fontfamily|stylefontsize|content|texthtml|textplain|\\w+encoding|charsetiso|imap|localhost|received|e?smtp|type|color|mime|src)") %>%
+  tm_map(gsubRemove, "(\\w+\\.){1,}(org|com|net|gov|edu|ie|cn|tw|insuranceiq|labs|xent|redhat|mailmanlistinfoexmhusers|listman|exmh|loop|listman|redhatpostfix|corp)") %>%
+  tm_map(gsubRemove, "((\\.\\w+)|(\\w+\\.))") %>%
+  tm_map(gsubRemove, ".*?(\\w)\\1{2,}.*?")
+spam <- DocumentTermMatrix(spam)
+```
+
+This should be a familiar process by now of stripping the data. For the real test... is there spam in the spam?
+
+```{r}
+spamInSpam <- lapply(spamMostFreq, function(x) findAssocs(spam, x, 0.75))
+spamInSpam <- t(as.data.frame(unlist(spamInSpam)))
+colnames(spamInSpam)
+```
+
+Three of the four spam words have made it into the working spam file - "text" has been lost. If the new set of spam has overlaps, we'll know pretty fast if they're spam or not.
+
+```{r}
+sort(intersect(colnames(spamInSpam), names(spamAssocs)))
+```
+
+# Going forward
+
+Obviously this is not ready to be implemented in an e-mail system, but for an initial exploration into data mining and natural language processing, it is overall a success.
