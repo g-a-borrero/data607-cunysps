@@ -1,0 +1,42 @@
+---
+title: "gabartomeoDATA607discussion12"
+author: "Gabrielle Bartomeo"
+date: "April 22, 2018"
+output:
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Steam
+
+[Steam](http://store.steampowered.com/) is a portable nexus of video games created by Valve Corporation. It allows for gamers to purchase games by a variety of established and indie game producers digitally and to have record of said purchase stored in their system. So long as a gamer has their username and password, they can access their personal library through this software and download their software titles onto their computer. In addition, this system allows gamers to maintain a friends list, invite friends to play games with them, and to stream their games or watch streamers.
+
+## Scenario Design Analysis
+
+The target users for Steam are computer gamers of all backgrounds. There is a greater emphasis placed on Windows gamers than MacOS gamers by virtue of there being less developers and more stringent rules for creating games for Apple's systems.
+
+The key goals of Steam are to connect their customers to games, whether it is by purchasing them through Steam itself or by getting a key for a game to be stored in the Steam system; for those looking to purchase games, Steam seeks to present gamers the sort of games they would be most likely to purchase and, by extension, enjoy.
+
+In order to connect their customers to games, Steam does a couple of things. First of all, Steam allows gamers to purchase games through their platform. By doing so, Steam stores a key for this game into database for this customer in particular, allowing the player to continue owning a game they purchased even if a new computer is obtained. Furthermore, Steam allows gamers to maintain wishlists and to purchase games for other gamers who may or may not be on their friends list. Second, Steam allows the purchasing of keys from outside sources (like the site [HumbleBundle](https://www.humblebundle.com/)) for use within their platform. Third, and finally, Steam's recommender system looks at games that have been purchased or recently played by their customers to deliver personalized game recommendations to each customer based off of their preferences.
+
+## Reverse Engineering
+
+The [Web API provided by Steam](https://developer.valvesoftware.com/wiki/Steam_Web_API) offers a lot of insight into various things about its customers and what information it is willing to openly share. At this point in time, it appears their API does not include the many tags provided on their site and in their client for games. As such, the only way to get a current, complete list of game tags is to go searching for them inside of the HTML on their website. These are hidden away within their [search page](http://store.steampowered.com/search/?)'s div whose id is "TagFilter_Container", where each div within with the class "tab_filter_control" has a parameter data-loc that gives a corresponding tag.
+
+When you go onto a game's page in Steam, it lists that game's tags on their page. For example, on the page for [Far Cry Primal](http://store.steampowered.com/app/371660/Far_Cry_Primal/), inside of the div bearing the class "glance_tags popular_tags", there is a list of links wrapped around tag-names, such as Open World, Survival, Action, et cetera. Currently, there is no way to access this list of tags for a single game through Steam's API either. There is also no way to access the list of all games available on Steam through their API.
+
+From their API you can get a hold of a customer's owned games (GetOwnedGames) and how much they've played them. You can also get a hold of a customer's recently played games (GetRecentlyPlayedGames) and how much they've played them. If this is combined with web scraping, it may be possible to get on the general path of what sort of games they would be likely to purchase.
+
+For example, when I opened up Steam the first thing I observed was the game Reigns being suggested to me. The reason for this, per Steam's client, was because I played games tagged with Indie, Simulation, and RPG. The next game I see listed is PLAYERUNKNOWN'S BATTLEGROUNDS (better known as PUBG), which Steam says is because my sister recommends it. She did indeed leave a review for the game recommending it. I have seen games recommended to me because I recently played games with the same tags as them, and I have seen games recommended to me because I recently purchased or installed games with the same tags as them. To truly have a hope of reproducing this would require access to all of the above, and then either the actual algorithm Valve Corporation uses for Steam or enough time to attempt to reproduce it.
+
+And one more factor that hasn't been mentioned: Steam's customers who are logged in can actually specify tags they do not want to be suggested.
+
+## Recommendations
+
+I have not seen proof one way or another on this, but one recommendation would be to look into tag pairing. Certain gamers may enjoy some tags together more than others, and not enjoy some tags when paired. For example, a person may enjoy action-horror games and may also enjoy cute-farming games, but they might not enjoy cute-horror games and action-farming games.
