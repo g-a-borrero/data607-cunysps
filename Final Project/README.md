@@ -14,9 +14,9 @@ To receive full credit, you’ll need to deliver on all of the items in the chec
 - [x] Proposal describes likely data sources.
 - [x] Your project has a recognizable “data science workflow,” such as the OSEMN workflow or Hadley Wickham’s Grammar of Data Science.  [Example:  First the data is acquired, then necessary transformations and clean-up are performed, then the analysis and presentation work is performed]
 - [x] Project includes data from at least two different types of data sources (e.g., two or more of these:  relational or CSV, Neo4J, web page [scraped or API], MongoDB, etc.)
-- [ ] Project includes at least one data transformation operation.  [Examples: transforming from wide to long; converting columns to date format]
+- [x] Project includes at least one data transformation operation.  [Examples: transforming from wide to long; converting columns to date format]
 - [ ] Project includes at least one statistical analysis and at least one graphics that describes or validates your data.
-- [ ] Project includes at least one graphic that supports your conclusion(s).
+- [x] Project includes at least one graphic that supports your conclusion(s).
 - [ ] Project includes at least one statistical analysis that supports your conclusion(s).
 - [ ] Project includes at least one feature that we did not cover in class!  There are many examples:  “I used ggmap; I created a decision tree; I ranked the results; I created my presentation slides directly from R; I figured out to use OAuth 2.0...”
 - [ ] Presentation.  Was the presentation delivered in the allotted time (3 to 5 minutes)?  Presentation.  Did you show (at least) one challenge you encountered in code and/or data, and what you did when you encountered that challenge?  If you didn’t encounter any challenges, your assignment was clearly too easy for you!
