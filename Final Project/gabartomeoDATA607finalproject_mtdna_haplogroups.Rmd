@@ -1,0 +1,1066 @@
+---
+title: "Final Project DATA 607 - mtDNA Haplogroups"
+author: "Gabrielle Bartomeo"
+date: "April 29, 2018"
+output:
+  html_document:
+    theme: journal
+    code_folding: hide
+    df_print: paged
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+---
+
+```{r setup, include=FALSE}
+library(tidyr)
+library(dplyr)
+mtdna_url <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Final%20Project/Data/mtDNA%20tree%20Build%2017.htm"
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The purpose of this separate RPubs file is to explain the process behind the creation of the data frame full of the various mtDNA haplogroups, as in the main file itself the RData for it is just loaded in, the purpose of which is to save time during testing and knitting.
+
+# Identifying the source
+
+In order to get the SNPs for each haplogroup, I needed to find a good source. I wasn't finding any that clearly listed out the SNPs for each and every mtDNA haplogroup. This in itself was a problem until I remembered having interacted with a site called [PhyloTree](http://www.phylotree.org/) previously. At first glance, this site seems pretty straight forward. There is a tree structure present that indicates which haplogroups and subclades derive from which other haplogroups and subclades.
+
+# Scraping the site
+
+The next step was to scrape the site. I thought this would be easy, because surely there were some clear identifiers in the HTML for the site that indicated which items were SNPs and which were haplogroups, and which haplogroups had which SNPs.
+
+I was sorely mistaken.
+
+As a result, I had to read the lines of the HTML and put it together into a single string so it could be further dealt with.
+
+```{r}
+mtdna_html <- readLines(mtdna_url)
+mtdna_html <- paste(mtdna_html, collapse="")
+```
+
+## Removing Unwanted Items
+
+There was first the matter of removing all of the HTML tags, which was easy enough to do; it was a simple use of the function `strsplit()` indicating that all of the text should be split based on the presence of HTML tags, also thereby removing them from the text itself. I put this into a variable called `mtdna_html_stripped`.
+
+```{r}
+mtdna_html_stripped <- strsplit(mtdna_html, "<.*?>")
+mtdna_html_stripped <- unlist(mtdna_html_stripped)
+```
+
+Next, we had to deal with some unnecessary and excessive items throughout the text. One is "&nbsp;", and the other was spaces. For what the code will be doing and dealing with, spaces were not needed in the final product. All those extra spaces were shrunk down to a single space, which the text was then split off of.
+
+```{r}
+mtdna_html_stripped <- gsub("^((&nbsp;)|([A-Z]{1,2}\\d{4,}))$", " ", mtdna_html_stripped)
+mtdna_html_stripped <- gsub(" +", " ", mtdna_html_stripped)
+mtdna_html_stripped <- strsplit(mtdna_html_stripped, " +")
+mtdna_html_stripped <- unlist(mtdna_html_stripped)
+```
+
+After that, it was a matter of removing any other characters that were not wanted. To do so, it was actually easier to indicate the small pool that was wanted and to negate it instead. Lastly, I removed all instances of empty strings in our vector, and I bypassed the first 280 items as they were neither haplogroups nor SNPs, but rather the opening information on the page itself talking about the tree.
+
+```{r}
+mtdna_html_stripped <- gsub("[^a-zA-Z\\.0-9\\!\\(\\)\\'\\-]+", "", mtdna_html_stripped)
+mtdna_html_stripped <- gsub("quot", "\\'", mtdna_html_stripped)
+mtdna_html_stripped <- mtdna_html_stripped[mtdna_html_stripped != ""]
+mtdna_html_stripped <- mtdna_html_stripped[280:length(mtdna_html_stripped)]
+```
+
+# Turning Scrapings into Lists
+
+I needed to identify out the haplogroups, which would later be having SNPs assigned to them. The pattern for haplogroups can actually get pretty complex and resemble that of an SNP. For example, PhyloTree does allow for SNPs to have their mutation indicated in a lowercase letter in certain instances. The general pattern for Haplogroups is a capital letter, followed by a number, followed by a lowercase letter. This pattern could falsely pick up SNPs instead of haplogroups and did in initial testing. As a result, a vector of SNPs and haplogroups (as both were caught by the regex) to be removed was created, along with a vector of haplogroups, and any haplogroup names that were not inside of the variable with SNPs and haplogroups were kept.
+
+```{r}
+mtdna_html_removeme <- grep("([ACGT]\\d{3,}[ACGTacgtd]|A16t|A56t|A95c|G54c|G66c|G71d|G73c|G75t|G97c|G97t|T57g|T55a|T72g)", mtdna_html_stripped, value=T)
+mtdna_haplogroups <- grep("(^([A-Z]+((\\d'?){,3}([a-z]{,2})){0,})$)|(\\')", mtdna_html_stripped, value=T)
+mtdna_haplogroups <- mtdna_haplogroups[!mtdna_haplogroups %in% mtdna_html_removeme]
+```
+
+This remaining list had `r formatC(length(mtdna_haplogroups), big.mark = ",")` items, or individual haplogroups and subclades. I used it to, in turn, create the start of a list of lists, whose names were that of the haplogroups.
+
+```{r}
+mtdna_groupings <- vector("list", length(mtdna_haplogroups))
+names(mtdna_groupings) <- mtdna_haplogroups
+```
+
+## Misplaced SNPs
+
+In the process of creating that stripped HTML, I looked over PhyloTree once more and noticed something unexpected. There were SNPs that acted as a gateway into certain groups with no direct haplogroup or subclade they were assigned to. In initial runs of my code, they were always tacked onto the haplogroup that occured right before them visually - so not as one might expect it on the tree at all. As a result, a list of all of these haplogroups and subclades needed to be made, and the number of these floating SNPs that were popped into each had to be kept as well.
+
+```{r}
+trunc_group <- c(
+  "L0a1a" = 1,
+  "L0a1a3" = 1,
+  "L0d1b1b1" = 1,
+  "L1b1a2a" = 1,
+  "L1c1a" = 1,
+  "L2a1a3c" = 2,
+  "L2a1b2" = 1,
+  "L2a1c5" = 1,
+  "L2a1a3c" = 2,
+  "L2a1g" = 1,
+  "L2a1c" = 1,
+  "L2a1c4a1" = 1,
+  "L2a1e1" = 3,
+  "L2d" = 1,
+  "L3a1b" = 1,
+  "L3b1a5a" = 1,
+  "L3b1a6" = 1,
+  "L3f1b" = 1,
+  "L3f1b2a" = 1,
+  "L3e2b2" = 1,
+  "L3x1a2" = 1,
+  "M1a1b2" = 1,
+  "M2a1a2a1a" = 1,
+  "M2a1a3" = 1,
+  "M3a1" = 1,
+  "M3c" = 1,
+  "M4'67" = 1,
+  "M65a1" = 1,
+  "M38a" = 1,
+  "M38c" = 1,
+  "M30d2" = 1,
+  "M37" = 2,
+  "M43" = 1,
+  "M7a" = 1,
+  "M7b1a1b" = 1,
+  "M8a" = 1,
+  "C1b6" = 1,
+  "C1c5" = 1,
+  "C1d" = 1,
+  "C4a1a1a" = 1,
+  "C4c2" = 2,
+  "C5b1b1" = 1,
+  "C5c" = 1,
+  "C7a2a" = 1,
+  "Z" = 1,
+  "Z3b" = 1,
+  "M9a1b" = 1,
+  "E1a2" = 1,
+  "M10a1" = 1,
+  "M11" = 1,
+  "G1b1" = 1,
+  "G2a1b" = 2,
+  "G21h" = 1,
+  "G3a2" = 1,
+  "M13c" = 1,
+  "M21b1a" = 1,
+  "M28a1" = 1,
+  "Q1" = 1,
+  "Q3a" = 2,
+  "M33a3a" = 1,
+  "M57" = 1,
+  "M35" = 1,
+  "M35b" = 1,
+  "M62b" = 1,
+  "M71" = 1,
+  "D1g1b" = 1,
+  "D4a3b2" = 1,
+  "D4b2b1c" = 1,
+  "D4h3a6" = 1,
+  "D4j2a" = 1,
+  "D4j5a" = 1,
+  "D4j8" = 1,
+  "D4j16" = 1,
+  "D4t" = 1,
+  "D5a2a1" = 1,
+  "D5c1a" = 1,
+  "N1a1a" = 1,
+  "I5a2" = 1,
+  "N1b1a3" = 1,
+  "N1b1a6" = 1,
+  "W1b1" = 1,
+  "W1h1" = 1,
+  "W3a1b" = 1,
+  "N9a10a2a" = 1,
+  "Y1a1" = 1,
+  "N21" = 1,
+  "A" = 2,
+  "A2b1" = 1,
+  "A2d2" = 1,
+  "A2k1a" = 1,
+  "A2aj" = 1,
+  "A2v1" = 1,
+  "A2an" = 1,
+  "A6b" = 1,
+  "A23" = 1,
+  "A11a" = 1,
+  "S2" = 1,
+  "X2" = 1,
+  "X2b" = 1,
+  "X2b11" = 1,
+  "X2e2c1" = 1,
+  "X2l" = 1,
+  "X2i" = 1,
+  "R0a1b" = 1,
+  "R0a2i" = 1,
+  "V18a" = 1,
+  "V22" = 1,
+  "V20" = 1,
+  "V28" = 1,
+  "HV1b1b" = 1,
+  "HV1d" = 1,
+  "HV4a1" = 1,
+  "HV5b" = 1,
+  "HV9" = 1,
+  "H1a9" = 1,
+  "H1b1" = 1,
+  "H1f" = 1,
+  "H1c1c" = 1,
+  "H1c8" = 1,
+  "H1e1a7" = 1,
+  "H1e2d" = 1,
+  "H1h2" = 1,
+  "H1n" = 1,
+  "H1n4" = 1,
+  "H1n6" = 1,
+  "H1am1" = 1,
+  "H1be" = 1,
+  "H1ca" = 1,
+  "H2a1m" = 1,
+  "H2a2a2" = 1,
+  "H2a5b2" = 2,
+  "H3" = 1,
+  "H3k1a" = 1,
+  "H3c3" = 1,
+  "H3e" = 1,
+  "H3v1" = 1,
+  "H3au" = 1,
+  "H4a1a2a1" = 1,
+  "H5a1k" = 1,
+  "H5a1n" = 1,
+  "H5a5" = 1,
+  "H5p" = 1,
+  "H5q" = 1,
+  "H5u1" = 1,
+  "H7i1" = 2,
+  "H8a1" = 1,
+  "H8b1" = 1,
+  "H11a6" = 1,
+  "H108" = 1,
+  "H10d" = 1,
+  "H13a1c" = 1,
+  "H13b1" = 1,
+  "H14a" = 1,
+  "H16" = 1,
+  "H16e" = 1,
+  "H27" = 1,
+  "H27f" = 1,
+  "H33c" = 1,
+  "H55a" = 1,
+  "R2" = 2,
+  "J1b1a1d" = 1,
+  "J1c3k" = 1,
+  "J1c6a" = 1,
+  "J1c7a" = 1,
+  "J1c17a" = 1,
+  "J2a2a1" = 1,
+  "J2b1a4" = 1,
+  "T1a" = 1,
+  "T1a1k2" = 1,
+  "T2a1b2b" = 1,
+  "T2b" = 1,
+  "T2b4i" = 1,
+  "T2b6a" = 1,
+  "T2b8" = 1,
+  "T2b15" = 1,
+  "T2b19b" = 1,
+  "T2c1c2" = 1,
+  "T2d2" = 1,
+  "T2e6" = 1,
+  "T2m" = 1,
+  "R6" = 1,
+  "R8a1a3" = 1,
+  "F1a3" = 1,
+  "F1f" = 1,
+  "F2" = 1,
+  "F2a" = 1,
+  "F2f" = 1,
+  "F3b" = 1,
+  "F4b1" = 1,
+  "B4" = 1,
+  "B4a1a1a22" = 1,
+  "B4a1a1q" = 1,
+  "B4a1a7" = 1,
+  "B4a1c1a1" = 1,
+  "B2b" = 1,
+  "B2v" = 1,
+  "B4b1a" = 1,
+  "B4c1b1a" = 1,
+  "B4c1c" = 1,
+  "B5a2a1a" = 1,
+  "B5b2b" = 1,
+  "P" = 1,
+  "P1d2a" = 1,
+  "U1a1a2" = 1,
+  "U5a1a1" = 1,
+  "U5a1a1c" = 1,
+  "U5a1b1d" = 1,
+  "U5a1b2" = 1,
+  "U5a2" = 1,
+  "U5a2d1a" = 1,
+  "U5b1a" = 1,
+  "U5b1b1" = 1,
+  "U5b1b1b" = 1,
+  "U5b1c2b" = 1,
+  "U5b2a1a" = 1,
+  "U5b2a3a" = 1,
+  "U6a1b4" = 2,
+  "U6a2b1" = 1,
+  "U6a3a2a" = 1,
+  "U6a7c1" = 1,
+  "U2b2" = 1,
+  "U4b1a4" = 2,
+  "U81a2a" = 1,
+  "K1a4a1a" = 1,
+  "K1a4i" = 1,
+  "K1a8b" = 1,
+  "K1a26" = 1,
+  "K1b1" = 1,
+  "K1b1a1" = 1,
+  "K1c2a" = 1
+)
+```
+
+## Jarbled Text to Haplogroups and SNPs
+
+Assigning the haplogroups and SNPs, from here, was a matter of a for loop. What this for loop did was look at each item in the vector of the stripped HTML. If that item wasn't in the list of haplogroups we previously created, it was added to the list of SNPs. If it was inside of the list of haplogroups, it was instead assigned as a name. If the name was a part of the group to be shortened due to those random SNPs that had no haplogroup to call home, they had their SNPs reduced by the number of floating SNPs to be found at the end of their list, resulting in only SNPs that were essential for that haplogroup. If the item was a name either way, the sublist inside that list of list whose name matched the item had the previously collected SNPs assigned to it, and then the list of SNPs was emptied for the next iteration.
+
+```{r}
+SNPs <- c()
+for (i in mtdna_html_stripped) {
+  if ( !(i %in% mtdna_haplogroups) ) {
+    SNPs <- c(SNPs, i)
+  } else {
+    if (length(SNPs) == 0) {
+      name_ <- i
+    } else {
+      if (name_ %in% names(trunc_group)){
+        SNPs <- SNPs[1:(length(SNPs)-trunc_group[[name_]])]
+      }
+      mtdna_groupings[[name_]] <- SNPs
+      name_ <- i
+      SNPs <- c()
+    }
+  }
+}
+mtdna_groupings[[name_]] <- SNPs
+```
+
+## But what about those misplaced SNPs?
+
+The misplaced SNPs still had a place and a role in the PhyloTree, but they needed somewhere to go. There was no neat way to code this. The only way to do it from what I observed was creating variables for each and every single one. It wasn't pretty, but it got the job done.
+
+```{r}
+mtdna_groupings$L0a1a_1_2_3 <- c("A200G")
+mtdna_groupings$L0a1_b_c_d <- c("A16293G")
+mtdna_groupings$L0d1b1_c <- c("C152T")
+mtdna_groupings$L1b1a_3_9_15_17_18 <- c("A189G")
+mtdna_groupings$L1c1a_1_2 <- c("T198C!")
+mtdna_groupings$L2a1_b_f_g <- c("T16189C!", "(C16192T)")
+mtdna_groupings$L2a1b_3 <- c("G143A")
+mtdna_groupings$L2a1_d_h <- c("G16309A!")
+mtdna_groupings$L2a1_c_d_e_h_i_j_k_l_m_n_o_p_q <- c("G143A")
+mtdna_groupings$L2a1c_1_6 <- c("T16086C")
+mtdna_groupings$L2a1c_5 <- c("G16129A!")
+mtdna_groupings$L2a1_i_j_k_l_m_n_o_p_q <- c("T16189C!", "(C16192T)")
+mtdna_groupings$L2a1_i_q <- c("G16309A!")
+mtdna_groupings$L2d_1 <- c("G16129A!")
+mtdna_groupings$L3a_2 <- c("G709A")
+mtdna_groupings$L3b1a_6 <- c("T152C!")
+mtdna_groupings$L3b1a_7_8_9 <- c("C16124T!")
+mtdna_groupings$L3f1b_1_2_3_4_5 <- c("C16292T")
+mtdna_groupings$L3f1b_3_4 <- c("C150T")
+mtdna_groupings$L3e2b_3_4_5_6 <- c("T152C!")
+mtdna_groupings$L3x1_b <- c("T16311C!")
+mtdna_groupings$M1a1_c_d <- c("T16093C")
+mtdna_groupings$M2a1a_3 <- c("G207A")
+mtdna_groupings$M2a1a3_a_b <- c("T16093C")
+mtdna_groupings$M3a1_a_b <- c("T204C")
+mtdna_groupings$M3c_1 <- c("T152C!")
+mtdna_groupings$M_4_65_67 <- c("T16311C!")
+mtdna_groupings$M65a_2 <- c("C16311T!!")
+mtdna_groupings$M38_b_c <- c("T195C!")
+mtdna_groupings$M38_d_e <- c("T199C")
+mtdna_groupings$M30_e <- c("C16234T")
+mtdna_groupings$M37_a_d <- c("T152C!", "C151T")
+mtdna_groupings$M43_a <- c("T16311C!")
+mtdna_groupings$M7a_1 <- c("T16324C")
+mtdna_groupings$M7b1a1_c_d_e_f_g_h_i <- c("(C16192T)")
+mtdna_groupings$M8a2_a_b <- c("T152C!")
+mtdna_groupings$C1b_7_10 <- c("T16311C!")
+mtdna_groupings$C1c_6_7 <- c("T195C!")
+mtdna_groupings$C1d_1_2_3 <- c("C194T")
+mtdna_groupings$C4a1a_2_3_4 <- c("T195C!")
+mtdna_groupings$C4_d_e <- c("T152C!")
+mtdna_groupings$C4_d <- c("T16093C")
+mtdna_groupings$C5_c_d <- c("T16093C")
+mtdna_groupings$C5c_1 <- c("C16234T")
+mtdna_groupings$C7_b <- c("A16051G")
+mtdna_groupings$Z_1_2_3_4_7 <- c("T152C!")
+mtdna_groupings$Z3_c_d <- c("G709A")
+mtdna_groupings$M9a1b_1_2 <- c("C150T")
+mtdna_groupings$E1a2_a <- c("(C16261T)")
+mtdna_groupings$M10a1_a <- c("G16129A!")
+mtdna_groupings$M11_a_b_d <- c("A200G")
+mtdna_groupings$G1b_2_3_4 <- c("G16129A!")
+mtdna_groupings$G2a1_c_d <- c("T16189C!")
+mtdna_groupings$G2a1_c <- c("A16194G")
+mtdna_groupings$G2a_2_3_4_5 <- c("T152C!")
+mtdna_groupings$G3a2_a <- c("T152C!")
+mtdna_groupings$M_46_61 <- c("T16362C")
+mtdna_groupings$M21b_2 <- c("A210G")
+mtdna_groupings$M28a_2_3_4 <- c("T204C")
+mtdna_groupings$Q1_a_d <- c("T16223C")
+mtdna_groupings$Q3a_1 <- c("C61T", "G62A")
+mtdna_groupings$M33_b_c <- c("T16362C")
+mtdna_groupings$M57_a <- c("T152C!")
+mtdna_groupings$M35_a_b <- c("T199C")
+mtdna_groupings$M35b_1_2_3 <- c("T16304C")
+mtdna_groupings$M62b_1_2 <- c("T204C")
+mtdna_groupings$M71_a_b <- c("C151T")
+mtdna_groupings$D1g_2_5 <- c("T16189C!")
+mtdna_groupings$D4a_4 <- c("C16294T")
+mtdna_groupings$D4b2b1_d <- c("T146C!")
+mtdna_groupings$D4h3a_7_8_9 <- c("C152T!!")
+mtdna_groupings$D4j_3_11 <- c("T16311C!")
+mtdna_groupings$D4j_6_13 <- c("T146C!")
+mtdna_groupings$D4j_9 <- c("(C16286T)")
+mtdna_groupings$D4_k_o_p <- c("T195C!")
+mtdna_groupings$D_5_6 <- c("T16189C!")
+mtdna_groupings$D5a2a1_a <- c("C16172T!")
+mtdna_groupings$D5c_2 <- c("T16311C!")
+mtdna_groupings$N1a1a_1_2 <- c("T152C!")
+mtdna_groupings$I5a2_a <- c("T16086C")
+mtdna_groupings$N1b1a_4 <- c("G16129A!")
+mtdna_groupings$N1b1a_7_8 <- c("T195C!")
+mtdna_groupings$W1_c_i <- c("T119C")
+mtdna_groupings$W_3_4_5_6_7_8_9 <- c("C194T")
+mtdna_groupings$W3a1_c_d <- c("T199C")
+mtdna_groupings$N9a10_b <- c("T16311C!")
+mtdna_groupings$Y1a_2 <- c("T16189C!")
+mtdna_groupings$N21_a <- c("T195C!")
+mtdna_groupings$A_1_2_3_6_7_9_11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26 <- c("T152C!")
+mtdna_groupings$A_1_2_6_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26 <- c("T16362C")
+mtdna_groupings$A2_c_d_e_f_g_h_i_j_k_l_m_n_o_p_q_t_u_v_w_x_y_aa_ab_ac_ad_ae_af_ag_ah_ai_aj_ak_al_am_an_ao_ap_aq <- c("(C64T)")
+mtdna_groupings$A2_e_ao <- c("G153A!")
+mtdna_groupings$A2_l_m_n_o_ai_aj <- c("T16111C!")
+mtdna_groupings$A2_p_am <- c("G16129A!")
+mtdna_groupings$A2v1_a_b <- c("T152C!!!")
+mtdna_groupings$A2_ap <- c("T16189C!")
+mtdna_groupings$A_12_23 <- c("T16189C!")
+mtdna_groupings$A_13_14 <- c("A200G")
+mtdna_groupings$A11_b <- c("C16234T")
+mtdna_groupings$S_3_4_5 <- c("T152C!")
+mtdna_groupings$X2_a_b_c_d_e_g_h_i_j_l_m_n_o <- c("G225A")
+mtdna_groupings$X2b_1_2_3_4_5_6_7_8_9_10_11_12_13 <- c("T226C")
+mtdna_groupings$X2b_12_13 <- c("C16192T")
+mtdna_groupings$X2_g_l <- c("G153A!")
+mtdna_groupings$X2_h <- c("T16223C")
+mtdna_groupings$X2i_1 <- c("A225G!")
+mtdna_groupings$R0a_2_3_4 <- c("60.1T")
+mtdna_groupings$R0a2_j <- c("T195C!")
+mtdna_groupings$V_19_22 <- c("C150T")
+mtdna_groupings$V_20 <- c("C16298T!")
+mtdna_groupings$V_21 <- c("C72T!")
+mtdna_groupings$HV0_b_c_d_e_f_g <- c("T195C!")
+mtdna_groupings$HV1b_2_3 <- c("T152C!")
+mtdna_groupings$HV_2_20 <- c("A73G!")
+mtdna_groupings$HV4a1_a <- c("C16291T")
+mtdna_groupings$HV_6_7_8_9_10_11_14_15_16_17_22_23_24 <- c("T16311C!")
+mtdna_groupings$HV9_a <- c("T152C!")
+mtdna_groupings$H1_b_f_g_k_y_z_aa_ab_ac_ad_cc <- c("T16189C!")
+mtdna_groupings$H1b1_a_b_c_d_h <- c("T16362C")
+mtdna_groupings$H1f_1 <- c("T16093C")
+mtdna_groupings$H1c1_d <- c("T16093C")
+mtdna_groupings$H1c_9 <- c("T152C!")
+mtdna_groupings$H1e1a_8 <- c("C16278T!")
+mtdna_groupings$H1e_3 <- c("G16129A!")
+mtdna_groupings$H1_i_an_bb <- c("T152C!")
+mtdna_groupings$H1n_1_2_3_4 <- c("T146C!")
+mtdna_groupings$H1n_5 <- c("T195C!")
+mtdna_groupings$H1_o_ck <- c("C16355T")
+mtdna_groupings$H1_ao_cg <- c("C16278T!")
+mtdna_groupings$H1_bf_bg_bh_ch <- c("C16239T")
+mtdna_groupings$H1_cd <- c("T16311C!")
+mtdna_groupings$H2a1_n <- c("T146C!")
+mtdna_groupings$H2a2_b <- c("(A16235G)")
+mtdna_groupings$H2_b_c <- c("T152C!", "T16311C!")
+mtdna_groupings$H3_a_g_i_j_k <- c("T152C!")
+mtdna_groupings$H3b_1_2_3_4_5_6_7 <- c("G16129A!")
+mtdna_groupings$H3_d <- c("A73G!")
+mtdna_groupings$H3_h_m_n <- c("T16311C!")
+mtdna_groupings$H3v_2 <- c("T16093C")
+mtdna_groupings$H3_av <- c("T16189C!")
+mtdna_groupings$H4a1a_3_4 <- c("T195C!")
+mtdna_groupings$H5a1_m_n <- c("T152C!")
+mtdna_groupings$H5a1_p <- c("T16093C")
+mtdna_groupings$H5a_6 <- c("T152C!")
+mtdna_groupings$H5_q <- c("C16192T")
+mtdna_groupings$H5_r_s_t <- c("T16311C!")
+mtdna_groupings$H5_v <- c("G709A")
+mtdna_groupings$H_8_11_12_31_91_108 <- c("T195C!")
+mtdna_groupings$H_8_31 <- c("T146C!")
+mtdna_groupings$H8_b_c <- c("(C114T)")
+mtdna_groupings$H8_c <- c("T152C!")
+mtdna_groupings$H11a_7 <- c("T152C!")
+mtdna_groupings$H_9_32_46_52_69_103_107 <- c("T152C!")
+mtdna_groupings$H10_e_f_g <- c("(T16093C)")
+mtdna_groupings$H13a1_d <- c("T152C!")
+mtdna_groupings$H13b1_a_b <- c("A200G")
+mtdna_groupings$H14a_1 <- c("T146C!")
+mtdna_groupings$H16_a_c_d <- c("T152C!")
+mtdna_groupings$H_17_27 <- c("G16129A!")
+mtdna_groupings$H27_a_b <- c("T16093C")
+mtdna_groupings$H_18_19 <- c("G13708A")
+mtdna_groupings$H_34_64_85 <- c("C16219T")
+mtdna_groupings$H55_b <- c("A153G")
+mtdna_groupings$R2_a_b_c_d <- c("T13500C")
+mtdna_groupings$R2_a <- c("T195C!")
+mtdna_groupings$J1b1a1_e <- c("T146C!")
+mtdna_groupings$J1c3_m <- c("A189G")
+mtdna_groupings$J1c_7_12_13_14 <- c("C16261T")
+mtdna_groupings$J1c_12_13 <- c("A189G")
+mtdna_groupings$J1_d <- c("C16193T")
+mtdna_groupings$J2a2a1_a <- c("T16311C!")
+mtdna_groupings$J2b1a_5 <- c("T16311C!")
+mtdna_groupings$T1a_1_2_3_4_11_12_13 <- c("T152C!")
+mtdna_groupings$T1a1_l <- c("C152T!!")
+mtdna_groupings$T2a_2_3 <- c("T195C!")
+mtdna_groupings$T2b3_a_c_d_e <- c("C151T")
+mtdna_groupings$T2b4_b_c_d_e_f_g_h <- c("T152C!")
+mtdna_groupings$T2b6_b <- c("T146C!")
+mtdna_groupings$T2b_9 <- c("C150T")
+mtdna_groupings$T2b_16 <- c("T16362C")
+mtdna_groupings$T2b_21_22 <- c("T152C!")
+mtdna_groupings$T2c1_d_e_f <- c("T146C!")
+mtdna_groupings$T2_e_m <- c("C150T")
+mtdna_groupings$T2e_7 <- c("T152C!")
+mtdna_groupings$T2_f <- c("T16189C!")
+mtdna_groupings$R6_a <- c("G16129A!")
+mtdna_groupings$R8a1_b <- c("T16093C")
+mtdna_groupings$F1a3_a <- c("T16311C!")
+mtdna_groupings$F1_b_d_e_g <- c("T16189C!")
+mtdna_groupings$F2_a_b_g <- c("C16291T")
+mtdna_groupings$F2a_1 <- c("T16291C!")
+mtdna_groupings$F2_h_i <- c("T195C!")
+mtdna_groupings$F3b_1 <- c("G207A")
+mtdna_groupings$R_11_24 <- c("T16189C!")
+mtdna_groupings$B_2_4_5_6 <- c("T16189C!")
+mtdna_groupings$B4_a_g_h_i_k_m <- c("C16261T")
+mtdna_groupings$B4a1a1a_23 <- c("T195C!")
+mtdna_groupings$B4a1a1_r <- c("T16126C")
+mtdna_groupings$B4a1_b_e <- c("T16311C!")
+mtdna_groupings$B4a1c_2_4_5 <- c("T146C!")
+mtdna_groupings$B2b_1 <- c("T152C!")
+mtdna_groupings$B2_w <- c("C16278T!")
+mtdna_groupings$B4b1a_1_2_3 <- c("G207A")
+mtdna_groupings$B4c1b_2 <- c("A16335G")
+mtdna_groupings$B4c1c_1 <- c("T16311C!")
+mtdna_groupings$B5a2a1_b <- c("G16129A!")
+mtdna_groupings$B5b2_c <- c("C204T!")
+mtdna_groupings$P_1_2_8_10 <- c("C16176T")
+mtdna_groupings$P1_e_f <- c("T152C!")
+mtdna_groupings$U1a1a_3 <- c("G16129A!")
+mtdna_groupings$U5a1a1_a_b_h <- c("T152C!")
+mtdna_groupings$U5a1a1_d <- c("T16362C")
+mtdna_groupings$U5a1b1d_1 <- c("T16093C")
+mtdna_groupings$U5a1b_3_4 <- c("T16362C")
+mtdna_groupings$U5a2_a <- c("C16294T")
+mtdna_groupings$U5a2_e <- c("T16362C")
+mtdna_groupings$U5b1_b_c_e_h <- c("T16189C!")
+mtdna_groupings$U5b1b1_a_d_f <- c("T16192C!")
+mtdna_groupings$U5b1b1_e <- c("T152C!")
+mtdna_groupings$U5b1_e_h <- c("T16192C!")
+mtdna_groupings$U5b2a1a_1 <- c("T16311C!")
+mtdna_groupings$U5b2a_4_5_6 <- c("T16192C!")
+mtdna_groupings$U6a_2_3_8 <- c("T16189C!")
+mtdna_groupings$U6a_2_8 <- c("(G103A)")
+mtdna_groupings$U6a2_c <- c("T195C!")
+mtdna_groupings$U6a3_b_e_f <- c("G185A")
+mtdna_groupings$U6_b_d <- c("T16311C!")
+mtdna_groupings$U2_c_d_e <- c("T152C!")
+mtdna_groupings$U4b1_b <- c("T146C!", "T152C!")
+mtdna_groupings$U8b1a2_b <- c("T16311C!")
+mtdna_groupings$K1a4a1a_1_3 <- c("T195C!")
+mtdna_groupings$K1a4_j <- c("T146C!")
+mtdna_groupings$K1a_9_10_13_14_15_16_26 <- c("T195C!")
+mtdna_groupings$K1a_11_24_30_31 <- c("C150T")
+mtdna_groupings$K1b1_a_b <- c("(T16093C)")
+mtdna_groupings$K1b1a1_a_b <- c("T199C")
+mtdna_groupings$K1_d_e_f <- c("T16362C")
+```
+
+## Bringing the SNPs together
+
+What the previous steps resulted in was a rather small set of lists inside the list of lists, all things considered. When you look at the site for PhyloTree and you look at this list of lists, you were looking at what appeared to be the exact same thing. Except that it was not. The site's tree structure implies visually what the code had not yet succeeded in: implying inheritance. Each of those little branches inherited the SNPs from the haplogroup it branched off of.
+
+And, unfortunately, these branches didn't always follow layman's logic. Why, for example, would a haplogroup named K come from the subclade U8b? I'm not professionally trained in genetics or biology, nor have I taken college courses as of composing this code in either, so it's sincere and honest confusion. Confused or not, it is what I decided I would be working with, and would have to accommodate its idiosyncracies.
+
+```{r}
+haplo.sorter <- function(haplogroup){
+  SNPs <- c()
+  haplo_list <- gsub("(([0-9']+)|([a-zA-Z']+))", "\\1 ", haplogroup)
+  haplo_list <- unlist(strsplit(haplo_list, " "))
+  haplo_length <- length(haplo_list)
+  apo_split <- FALSE
+  if (length(grep("'", haplo_list[haplo_length])) > 1){
+    apo_split <- unlist(strsplit(haplo_list[haplo_length]), "'")
+  }
+  haplo_path <- c()
+  haplo_path <- case_when(
+    haplogroup %in% c("L0", "L1'2'3'4'5'6") ~ "",
+    haplogroup == "M" ~ paste("L3", sep=" "),
+    haplogroup == "CZ" ~ paste("M8", sep=" "),
+    haplogroup %in% c("C", "Z") ~ paste("CZ", sep=" "),
+    haplogroup == "E" ~ paste("M9", sep=" "),
+    haplogroup == "G" ~ paste("M12'G", sep=" "),
+    haplogroup == "Q" ~ paste("M29'Q", sep=" "),
+    haplogroup == "D" ~ paste("M80'D", sep=" "),
+    haplogroup == "N" ~ paste("L3", sep=" "),
+    haplogroup == "I" ~ paste("N1a1b", sep=" "),
+    haplogroup == "W" ~ paste("N2", sep=" "),
+    haplogroup == "Y" ~ paste("N9", sep=" "),
+    haplogroup %in% c("A", "O", "S", "X", "R") ~ paste("N", sep=" "),
+    haplogroup == "HV" ~ paste("R0", sep=" "),
+    haplogroup == "V" ~ paste("HV0a", sep=" "),
+    haplogroup == "H" ~ paste("HV", sep=" "),
+    haplogroup %in% c("M12'G", "M80'D", "M29'Q") ~ paste("M", sep= " "),
+    haplogroup == "JT" ~ paste("R2'JT", sep=" "),
+    haplogroup %in% c("J", "T") ~ paste("JT", sep=" "),
+    haplogroup == "F" ~ paste("R9", sep=" "),
+    haplogroup %in% c("P", "U") ~ paste("R", sep=" "),
+    haplogroup == "K" ~ paste("U8b", sep=" "),
+    haplogroup == "L0a'b'f'g'k" ~ paste("L0", sep=" "),
+    haplogroup == "L0a'b'f'g" ~ paste("L0a'b'f'g'k", sep=" "),
+    haplogroup == "L0a'b'g" ~ paste("L0a'b'f'g", sep=" "),
+    haplogroup == "L0a'g" ~ paste("L0a'b'g", sep=" "),
+    haplogroup %in% c("L0a", "L0g") ~ paste("L0a'g", sep=" "),
+    haplogroup %in% c("L0a1", "L0a4") ~ paste("L0a1'4", sep=" "),
+    haplogroup %in% c("L0d1", "L0d2") ~ paste("L0d1'2", sep=" "),
+    haplogroup == "L0d1a'c'd" ~ paste("L0d1", sep=" "),
+    haplogroup == "L0d1a'd" ~ paste("L0d1a'c'd", sep=" "),
+    haplogroup %in% c("L0d1a", "L0d1d") ~ paste("L0d1a'd", sep=" "),
+    haplogroup %in% c("L0a1", "L0a4") ~ paste("L0a1'4", sep=" "),
+    haplogroup %in% c("L0d1", "L0d2") ~ paste("L0d1'2", sep=" "),
+    haplogroup %in% c("L0d1a", "L0d1c", "L0d1d") ~ paste("L0d1a'c'd", sep=" "),
+    haplogroup %in% c("L0d2a", "L0d2b", "L0d2d") ~ paste("L0d2a'b'd", sep=" "),
+    haplogroup %in% c("L1", "L2'3'4'5'6") ~ paste("L1'2'3'4'5'6", sep=" "),
+    haplogroup %in% c("L1b1a1", "L1b1a4") ~ paste("L1b1a1'4", sep=" "),
+    haplogroup %in% c("L1b2", "L1b3") ~ paste("L1b2'3", sep=" "),
+    haplogroup %in% c("L1c1'2'4'6", "L1c5") ~ paste("L1c1'2'4'5'6", sep=" "),
+    haplogroup %in% c("L1c1", "L1c2'4", "L1c6") ~ paste("L1c1'2'4'6", sep=" "),
+    haplogroup %in% c("L1c1a", "L1c1b'd") ~ paste("L1c1a'b'd", sep=" "),
+    haplogroup %in% c("L1c1b", "L1c1d") ~ paste("L1c1b'd", sep=" "),
+    haplogroup %in% c("L1c2", "L1c4") ~ paste("L1c2'4", sep=" "),
+    haplogroup %in% c("L1c2b1a", "L1c2b1b") ~ paste("L1c2b1a'b", sep=" "),
+    haplogroup %in% c("L1c3b", "L1c3c") ~ paste("L1c3b'c", sep=" "),
+    haplogroup %in% c("L5", "L2'3'4'6") ~ paste("L2'3'4'5'6", sep=" "),
+    haplogroup %in% c("L2", "L3'4'6") ~ paste("L2'3'4'6", sep=" "),
+    haplogroup %in% c("L2a", "L2b'c'd") ~ paste("L2a'b'c'd", sep=" "),
+    haplogroup %in% c("L2a1", "L2a2'3'4") ~ paste("L2a1'2'3'4", sep=" "),
+    haplogroup %in% c("L2a2'3", "L2a4") ~ paste("L2a2'3'4", sep=" "),
+    haplogroup %in% c("L2a2", "L2a3") ~ paste("L2a2'3", sep=" "),
+    haplogroup %in% c("L2b'c", "L2d") ~ paste("L2b'c'd", sep=" "),
+    haplogroup %in% c("L2b", "L2c") ~ paste("L2b'c", sep=" "),
+    haplogroup %in% c("L3'4", "L6") ~ paste("L3'4'6", sep=" "),
+    haplogroup %in% c("L4", "L3") ~ paste("L3'4", sep=" "),
+    haplogroup %in% c("L3b", "L3f") ~ paste("L3b'f", sep=" "),
+    haplogroup %in% c("L3c", "L3d") ~ paste("L3c'd", sep=" "),
+    haplogroup %in% c("L3d1", "L3d2", "L3d3", "L3d4", "L3d5", "L3d6") ~ paste("L3d1'2'3'4'5'6", sep=" "),
+    haplogroup %in% c("L3d1a1", "L3d1a2") ~ paste("L3d1a1'2", sep=" "),
+    haplogroup %in% c("L3e", "L3i", "L3k", "L3x") ~ paste("L3e'i'k'x", sep=" "),
+    haplogroup %in% c("L3e3'4", "L3e5") ~ paste("L3e3'4'5", sep=" "),
+    haplogroup %in% c("L3e3", "L3e4") ~ paste("L3e3'4", sep=" "),
+    haplogroup %in% c("M1", "M20", "M51") ~ paste("M1'20'51", sep=" "),
+    haplogroup %in% c("M2a", "M2b") ~ paste("M2a'b", sep=" "),
+    haplogroup %in% c("M4", "M67") ~ paste("M4'67", sep=" "),
+    haplogroup %in% c("M18", "M38") ~ paste("M18'38", sep=" "),
+    haplogroup %in% c("M5a", "M5d") ~ paste("M5a'd", sep=" "),
+    haplogroup %in% c("M5b", "M5c") ~ paste("M5b'c", sep=" "),
+    haplogroup %in% c("M7b", "M7c") ~ paste("M7b'c", sep=" "),
+    haplogroup %in% c("M8a2", "M8a3") ~ paste("M8a2'3", sep=" "),
+    haplogroup %in% c("C4a", "C4b", "C4c") ~ paste("C4a'b'c", sep=" "),
+    haplogroup %in% c("M11a", "M11b") ~ paste("M11a'b", sep=" "),
+    haplogroup %in% c("M9a", "M9b") ~ paste("M9a'b", sep=" "),
+    haplogroup %in% c("M12") ~ paste("M12'G", sep=" "),
+    haplogroup %in% c("G1a2", "G1a3") ~ paste("G1a2'3", sep=" "),
+    haplogroup %in% c("G2a", "G2c") ~ paste("G2a'c", sep=" "),
+    haplogroup %in% c("G3a1", "G3a2") ~ paste("G3a1'2", sep=" "),
+    haplogroup %in% c("M13") ~ paste("M13'46'61", sep=" "),
+    haplogroup %in% c("M13a", "M13b") ~ paste("M13a'b", sep=" "),
+    haplogroup %in% c("M19", "M53") ~ paste("M19'53", sep=" "),
+    haplogroup %in% c("M23", "M75") ~ paste("M23'75", sep=" "),
+    haplogroup %in% c("M24", "M41") ~ paste("M24'41", sep=" "),
+    haplogroup %in% c("M29") ~ paste("M29'Q", sep=" "),
+    haplogroup %in% c("Q1", "Q2") ~ paste("Q1'2", sep=" "),
+    haplogroup %in% c("M31b", "M31c") ~ paste("M31b'c", sep=" "),
+    haplogroup %in% c("M32", "M56") ~ paste("M32'56", sep=" "),
+    haplogroup %in% c("M33a2", "M33a3") ~ paste("M33a2'3", sep=" "),
+    haplogroup %in% c("M34", "M57") ~ paste("M34'57", sep=" "),
+    haplogroup %in% c("M39", "M70") ~ paste("M39'70", sep=" "),
+    haplogroup %in% c("M42", "M74") ~ paste("M42'74", sep=" "),
+    haplogroup %in% c("M55", "M77") ~ paste("M55'77", sep=" "),
+    haplogroup %in% c("M62", "M68") ~ paste("M62'68", sep=" "),
+    haplogroup %in% c("M73", "M79") ~ paste("M73'79", sep=" "),
+    haplogroup %in% c("M80") ~ paste("M80'D", sep=" "),
+    haplogroup %in% c("D4b1b", "D4b1d") ~ paste("D4b1b'd", sep=" "),
+    haplogroup %in% c("D4e1", "D4e3") ~ paste("D4e1'3", sep=" "),
+    haplogroup %in% c("D2a", "D2b") ~ paste("D2a'b", sep=" "),
+    haplogroup %in% c("D5a", "D5b") ~ paste("D5a'b", sep=" "),
+    haplogroup %in% c("N1", "N5") ~ paste("N1'5", sep=" "),
+    haplogroup %in% c("N1a1", "N1a2") ~ paste("N1a1'2", sep=" "),
+    haplogroup %in% c("I2", "I3") ~ paste("I2'3", sep=" "),
+    haplogroup %in% c("N9a1", "N9a3") ~ paste("N9a1'3", sep=" "),
+    haplogroup %in% c("N9a2", "N9a4", "N9a5", "N9a11") ~ paste("N9a2'4'5'11", sep=" "),
+    haplogroup %in% c("X1'3", "X2") ~ paste("X1'2'3", sep=" "),
+    haplogroup %in% c("X2a", "X2j") ~ paste("X2a'j", sep=" "),
+    haplogroup %in% c("X2b", "X2d") ~ paste("X2b'd", sep=" "),
+    haplogroup %in% c("X2m", "X2n") ~ paste("X2m'n", sep=" "),
+    haplogroup %in% c("X1", "X3") ~ paste("X1'3", sep=" "),
+    haplogroup %in% c("R0a", "R0b") ~ paste("R0a'b", sep=" "),
+    haplogroup %in% c("R0a2", "R0a3") ~ paste("R0a2'3", sep=" "),
+    haplogroup %in% c("HV1a", "HV1b", "HV1c") ~ paste("HV1a'b'c", sep=" "),
+    haplogroup %in% c("H5", "H36") ~ paste("H5'36", sep=" "),
+    haplogroup == "R2'JT" ~ paste("R", sep=" "),
+    haplogroup %in% c("R2", "JT") ~ paste("R2'JT", sep=" "),
+    haplogroup %in% c("T1a1", "T1a3") ~ paste("T1a1'3", sep=" "),
+    haplogroup %in% c("R7a", "R7b") ~ paste("R7a'b", sep=" "),
+    haplogroup %in% c("F1a", "F1c", "F1f") ~ paste("F1a'c'f", sep=" "),
+    haplogroup %in% c("F1a1", "F1a4") ~ paste("F1a1'4", sep=" "),
+    haplogroup %in% c("R11", "B6") ~ paste("R11'B6", sep=" "),
+    haplogroup %in% c("B4", "B5") ~ paste("B4'5", sep=" "),
+    haplogroup %in% c("B4b", "B4d", "B4e", "B4j") ~ paste("B4b'd'e'j", sep=" "),
+    haplogroup %in% c("B4b1b", "B4b1c") ~ paste("B4b1b'c", sep=" "),
+    haplogroup %in% c("B4d1", "B4d2", "B4d3") ~ paste("B4d1'2'3", sep=" "),
+    haplogroup %in% c("B4c1a", "B4c1b") ~ paste("B4c1a'b", sep=" "),
+    haplogroup %in% c("R12", "R21") ~ paste("R12'21", sep=" "),
+    haplogroup %in% c("P2", "P10") ~ paste("P2'10", sep=" "),
+    haplogroup %in% c("U5a", "U5b") ~ paste("U5a'b", sep=" "),
+    haplogroup %in% c("U6a") ~ paste("U6a'b'd", sep=" "),
+    haplogroup %in% c("U2", "U3", "U4'9", "U7", "U8") ~ paste("U2'3'4'7'8'9", sep=" "),
+    haplogroup %in% c("U2c", "U2d") ~ paste("U2c'd", sep=" "),
+    haplogroup %in% c("U2e1", "U2e2", "U2e3") ~ paste("U2e1'2'3", sep=" "),
+    haplogroup %in% c("U3a'c") ~ paste("U3a'c", sep=" "),
+    haplogroup %in% c("U4", "U9") ~ paste("U4'9", sep=" "),
+    haplogroup %in% c("U8b", "U8c") ~ paste("U8b'c", sep=" "),
+    haplogroup %in% c("L0a1a1", "L0a1a2", "L0a1a3") ~ paste("L0a1a", "L0a1a_1_2_3", sep=" "),
+    haplogroup %in% c("L0a1b", "L0a1c", "L0a1d") ~ paste("L0a1", "L0a1_b_c_d", sep=" "),
+    haplogroup == "L0d1b1c" ~ paste("L0d1b1", "L0d1b1_c", sep=" "),
+    haplogroup %in% c("L1b1a3", "L1b1a9", "L1b1a15", "L1b1a17", "L1b1a18") ~ paste("L1b1a", "L1b1a_3_9_15_17_18", sep=" "),
+    haplogroup %in% c("L1c1a1", "L1c1a2") ~ paste("L1c1a", "L1c1a_1_2", sep=" "),
+    haplogroup %in% c("L2a1b", "L2a1f", "L2a1g") ~ paste("L2a1", "L2a1_b_f_g", sep=" "),
+    haplogroup == "L2a1b3" ~ paste("L2a1b", "L2a1b_3", sep=" "),
+    haplogroup %in% c("L2a1d", "L2a1h") ~ paste("L2a1", "L2a1_d_h", sep=" "),
+    haplogroup %in% c("L2a1c", "L2a1d", "L2a1e", "L2a1h", "L2a1i", "L2a1j", "L2a1k", "L2a1l", "L2a1m", "L2a1n", "L2a1o", "L2a1p", "L2a1q") ~ paste("L2a1", "L2a1_c_d_e_h_i_j_k_l_m_n_o_p_q", sep=" "),
+    haplogroup %in% c("L2a1c1", "L2a1c6") ~ paste("L2a1c", "L2a1c_1_6", sep=" "),
+    haplogroup == "L2a1c5" ~ paste("L2a1c", "L2a1c_5", sep=" "),
+    haplogroup %in% c("L2a1i", "L2a1j", "L2a1k", "L2a1l", "L2a1m", "L2a1n", "L2a1o", "L2a1p", "L2a1q") ~ paste("L2a1", "L2a1_i_j_k_l_m_n_o_p_q", sep=" "),
+    haplogroup %in% c("L2a1i", "L2a1q") ~ paste("L2a1", "L2a1_i_q", sep=" "),
+    haplogroup == "L2d1" ~ paste("L2d", "L2d_1", sep=" "),
+    haplogroup == "L3a2" ~ paste("L3a", "L3a_2", sep=" "),
+    haplogroup == "L3b1a6" ~ paste("L3b1a", "L3b1a_6", sep=" "),
+    haplogroup %in% c("L3b1a7", "L3b1a8", "L3b1a9") ~ paste("L3b1a", "L3b1a_7_8_9", sep=" "),
+    haplogroup %in% c("L3f1b1", "L3f1b2", "L3f1b3", "L3f1b4", "L3f1b5") ~ paste("L3f1b", "L3f1b_1_2_3_4_5", sep=" "),
+    haplogroup %in% c("L3f1b3", "L3f1b4") ~ paste("L3f1b", "L3f1b_3_4", sep=" "),
+    haplogroup %in% c("L3e2b3", "L3e2b4", "L3e2b5", "L3e2b6") ~ paste("L3e2b", "L3e2b_3_4_5_6", sep=" "),
+    haplogroup == "L3x1b" ~ paste("L3x1", "L3x1_b", sep=" "),
+    haplogroup %in% c("M1a1c", "M1a1d") ~ paste("M1a1", "M1a1_c_d", sep=" "),
+    haplogroup == "M2a1a3" ~ paste("M2a1a", "M2a1a_3", sep=" "),
+    haplogroup %in% c("M2a1a3a", "M2a1a3b") ~ paste("M2a1a3", "M2a1a3_a_b", sep=" "),
+    haplogroup %in% c("M3a1a", "M3a1b") ~ paste("M3a1", "M3a1_a_b", sep=" "),
+    haplogroup == "M3c1" ~ paste("M3c", "M3c_1", sep=" "),
+    haplogroup %in% c("M4", "M65", "M67") ~ paste("M", "M_4_65_67", sep=" "),
+    haplogroup == "M65a2" ~ paste("M65a", "M65a_2", sep=" "),
+    haplogroup %in% c("M38b", "M38c") ~ paste("M38", "M38_b_c", sep=" "),
+    haplogroup %in% c("M38d", "M38e") ~ paste("M38", "M38_d_e", sep=" "),
+    haplogroup == "M30e" ~ paste("M30", "M30_e", sep=" "),
+    haplogroup %in% c("M37a", "M37d") ~ paste("M37", "M37_a_d", sep=" "),
+    haplogroup == "M43a" ~ paste("M43", "M43_a", sep=" "),
+    haplogroup == "M7a1" ~ paste("M7a", "M7a_1", sep=" "),
+    haplogroup %in% c("M7b1a1c", "M7b1a1d", "M7b1a1e", "M7b1a1f", "M7b1a1g", "M7b1a1h", "M7b1a1i") ~ paste("M7b1a1", "M7b1a1_c_d_e_f_g_h_i", sep=" "),
+    haplogroup %in% c("M8a2a", "M8a2b") ~ paste("M8a2", "M8a2_a_b", sep=" "),
+    haplogroup %in% c("C1b7", "C1b10") ~ paste("C1b", "C1b_7_10", sep=" "),
+    haplogroup %in% c("C1c6", "C1c7") ~ paste("C1c", "C1c_6_7", sep=" "),
+    haplogroup %in% c("C1d1", "C1d2", "C1d3") ~ paste("C1d", "C1d_1_2_3", sep=" "),
+    haplogroup %in% c("C4a1a2", "C4a1a3", "C4a1a4") ~ paste("C4a1a", "C4a1a_2_3_4", sep=" "),
+    haplogroup == "C4e" ~ paste("C4", "C4_d_e", sep=" "),
+    haplogroup == "C4d" ~ paste("C4", "C4_d_e", "C4_d", sep=" "),
+    haplogroup %in% c("C5c", "C5d") ~ paste("C5", "C5_c_d", sep=" "),
+    haplogroup == "C5c1" ~ paste("C5c", "C5c_1", sep=" "),
+    haplogroup == "C7b" ~ paste("C7", "C7_b", sep=" "),
+    haplogroup %in% c("Z1", "Z2", "Z3", "Z4", "Z7") ~ paste("Z", "Z_1_2_3_4_7", sep=" "),
+    haplogroup %in% c("Z3c", "Z3d") ~ paste("Z3", "Z3_c_d", sep=" "),
+    haplogroup %in% c("M9a1b1", "M9a1b2") ~ paste("M9a1b", "M9a1b_1_2", sep=" "),
+    haplogroup == "E1a2a" ~ paste("E1a2", "E1a2_a", sep=" "),
+    haplogroup == "M10a1a" ~ paste("M10a1", "M10a1_a", sep=" "),
+    haplogroup %in% c("M11a'b", "M11d") ~ paste("M11", "M11_a_b_d", sep=" "),
+    haplogroup %in% c("G1b2", "G1b3", "G1b4") ~ paste("G1b", "G1b_2_3_4", sep=" "),
+    haplogroup == "G2a1d" ~ paste("G2a1", "G2a1_c_d", sep=" "),
+    haplogroup == "G2a1c" ~ paste("G2a1", "G2a1_c_d", "G2a1_c", sep=" "),
+    haplogroup %in% c("G2a2", "G2a3", "G2a4", "G2a5") ~ paste("G2a", "G2a_2_3_4_5", sep=" "),
+    haplogroup == "G3a2a" ~ paste("G3a2", "G3a2_a", sep=" "),
+    haplogroup %in% c("M46", "M61") ~ paste("M13'46'61", "M_46_61", sep=" "),
+    haplogroup == "M21b2" ~ paste("M21b", "M21b_2", sep=" "),
+    haplogroup %in% c("M28a2", "M28a3", "M28a4") ~ paste("M28a", "M28a_2_3_4", sep=" "),
+    haplogroup %in% c("Q1a", "Q1d") ~ paste("Q1", "Q1_a_d", sep=" "),
+    haplogroup == "Q3a1" ~ paste("Q3a", "Q3a_1", sep=" "),
+    haplogroup %in% c("M33b", "M33c") ~ paste("M33", "M33_b_c", sep=" "),
+    haplogroup == "M57a" ~ paste("M57", "M57_a", sep=" "),
+    haplogroup %in% c("M35a", "M35b") ~ paste("M35", "M35_a_b", sep=" "),
+    haplogroup %in% c("M35b1", "M35b2", "M35b3") ~ paste("M35b", "M35b_1_2_3", sep=" "),
+    haplogroup %in% c("M62b1", "M62b2") ~ paste("M62b", "M62b_1_2", sep=" "),
+    haplogroup %in% c("M71a", "M71b") ~ paste("M71", "M71_a_b", sep=" "),
+    haplogroup %in% c("D1g2", "D1g5") ~ paste("D1g", "D1g_2_5", sep=" "),
+    haplogroup == "D4a4" ~ paste("D4a", "D4a_4", sep=" "),
+    haplogroup == "D4b2b1d" ~ paste("D4b2b1", "D4b2b1_d", sep=" "),
+    haplogroup %in% c("D4h3a7", "D4h3a8", "D4h3a9") ~ paste("D4h3a", "D4h3a_7_8_9", sep=" "),
+    haplogroup %in% c("D4j3", "D4j11") ~ paste("D4j", "D4j_3_11", sep=" "),
+    haplogroup %in% c("D4j6", "D4j13") ~ paste("D4j", "D4j_6_13", sep=" "),
+    haplogroup == "D4j9" ~ paste("D4j", "D4j_9", sep=" "),
+    haplogroup %in% c("D4k", "D4o", "D4p") ~ paste("D4", "D4_k_o_p", sep=" "),
+    haplogroup %in% c("D5", "D6") ~ paste("D", "D_5_6", sep=" "),
+    haplogroup == "D5a2a1a" ~ paste("D5a2a1", "D5a2a1_a", sep=" "),
+    haplogroup == "D5c2" ~ paste("D5c", "D5c_2", sep=" "),
+    haplogroup %in% c("N1a1a1", "N1a1a2") ~ paste("N1a1a", "N1a1a_1_2", sep=" "),
+    haplogroup == "I5a2a" ~ paste("I5a2", "I5a2_a", sep=" "),
+    haplogroup == "N1b1a4" ~ paste("N1b1a", "N1b1a_4", sep=" "),
+    haplogroup %in% c("N1b1a7", "N1b1a8") ~ paste("N1b1a", "N1b1a_7_8", sep=" "),
+    haplogroup %in% c("W1c", "W1i") ~ paste("W1", "W1_c_i", sep=" "),
+    haplogroup %in% c("W3", "W4", "W5", "W6", "W7", "W8", "W9") ~ paste("W", "W_3_4_5_6_7_8_9", sep=" "),
+    haplogroup %in% c("W3a1c", "W3a1d") ~ paste("W3a1", "W3a1_c_d", sep=" "),
+    haplogroup == "N9a10b" ~ paste("N9a10", "N9a10_b", sep=" "),
+    haplogroup == "Y1a2" ~ paste("Y1a", "Y1a_2", sep=" "),
+    haplogroup == "N21a" ~ paste("N21", "N21_a", sep=" "),
+    haplogroup %in% c("A3", "A7", "A9", "A11") ~ paste("A", "A_1_2_3_6_7_9_11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26", sep=" "),
+    haplogroup %in% c("A1", "A2", "A6", "A12", "A13", "A14", "A15", "A16", "A17", "A18", "A19", "A20", "A21", "A22", "A23", "A24", "A25", "A26") ~ paste("A", "A_1_2_3_6_7_9_11_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26", "A_1_2_6_12_13_14_15_16_17_18_19_20_21_22_23_24_25_26", sep=" "),
+    haplogroup %in% c("A2c", "A2d", "A2f", "A2g", "A2h", "A2i", "A2j", "A2k", "A2q", "A2t", "A2u", "A2v", "A2w", "A2x", "A2y", "A2aa", "A2ab", "A2ac", "A2ad", "A2ae", "A2af", "A2ag", "A2ah", "A2ak", "A2al", "A2an", "A2aq") ~ paste("A2", "A2_c_d_e_f_g_h_i_j_k_l_m_n_o_p_q_t_u_v_w_x_y_aa_ab_ac_ad_ae_af_ag_ah_ai_aj_ak_al_am_an_ao_ap_aq", sep=" "),
+    haplogroup %in% c("A2e", "A2ao") ~ paste("A2", "A2_c_d_e_f_g_h_i_j_k_l_m_n_o_p_q_t_u_v_w_x_y_aa_ab_ac_ad_ae_af_ag_ah_ai_aj_ak_al_am_an_ao_ap_aq", "A2_e_ao", sep=" "),
+    haplogroup %in% c("A2l", "A2m", "A2n", "A2o", "A2ai", "A2aj") ~ paste("A2", "A2_c_d_e_f_g_h_i_j_k_l_m_n_o_p_q_t_u_v_w_x_y_aa_ab_ac_ad_ae_af_ag_ah_ai_aj_ak_al_am_an_ao_ap_aq",  "A2_l_m_n_o_ai_aj", sep=" "),
+    haplogroup %in% c("A2p", "A2am") ~ paste("A2", "A2_c_d_e_f_g_h_i_j_k_l_m_n_o_p_q_t_u_v_w_x_y_aa_ab_ac_ad_ae_af_ag_ah_ai_aj_ak_al_am_an_ao_ap_aq", "A2_p_am", sep=" "),
+    haplogroup %in% c("A2v1a", "A2v1b") ~ paste("A2v1", "A2v1_a_b", sep=" "),
+    haplogroup == "A2ap" ~ paste("A2", "A2_c_d_e_f_g_h_i_j_k_l_m_n_o_p_q_t_u_v_w_x_y_aa_ab_ac_ad_ae_af_ag_ah_ai_aj_ak_al_am_an_ao_ap_aq", "A2_ap", sep=" "),
+    haplogroup %in% c("A12", "A23") ~ paste("A", "A_12_23", sep=" "),
+    haplogroup %in% c("A13", "A14") ~ paste("A", "A_13_14", sep=" "),
+    haplogroup == "A11b" ~ paste("A11", "A11_b", sep=" "),
+    haplogroup %in% c("S3", "S4", "S5") ~ paste("S", "S_3_4_5", sep=" "),
+    haplogroup %in% c("X2a'j", "X2b'd", "X2c", "X2e", "X2g", "X2h", "X2i", "X2k", "X2m'n", "X2o") ~ paste("X2", "X2_a_b_c_d_e_g_h_i_j_l_m_n_o", sep=" "),
+    haplogroup %in% c("X2b1", "X2b2", "X2b3", "X2b4", "X2b5", "X2b6", "X2b7", "X2b8", "X2b9", "X2b10", "X2b11") ~ paste("X2b", "X2b_1_2_3_4_5_6_7_8_9_10_11_12_13", sep=" "),
+    haplogroup %in% c("X2b12", "X2b13") ~ paste("X2b", "X2b_1_2_3_4_5_6_7_8_9_10_11_12_13", "X2b_12_13", sep=" "),
+    haplogroup %in% c("X2g", "X2l") ~ paste("X2", "X2_g_l", sep=" "),
+    haplogroup == "X2h" ~ paste("X2", "X2_h", sep=" "),
+    haplogroup == "X2i1" ~ paste("X2i", "X2i_1", sep=" "),
+    haplogroup %in% c("R0a2'3", "R0a4") ~ paste("R0a", "R0a_2_3_4", sep=" "),
+    haplogroup == "R0a2j" ~ paste("R0a2", "R0a2_j", sep=" "),
+    haplogroup %in% c("V19", "V22") ~ paste("V", "V_19_22", sep=" "),
+    haplogroup == "V20" ~ paste("V", "V_20", sep=" "),
+    haplogroup == "V21" ~ paste("V", "V_21", sep=" "),
+    haplogroup %in% c("HV0b", "HV0c", "HV0d", "HV0e", "HV0f", "HV0g") ~ paste("HV0", "HV0_b_c_d_e_f_g", sep=" "),
+    haplogroup %in% c("HV1b2", "HV1b3") ~ paste("HV1b", "HV1b_2_3", sep=" "),
+    haplogroup %in% c("HV2", "HV20") ~ paste("HV", "HV_2_20", sep=" "),
+    haplogroup == "HV4a1a" ~ paste("HV4a1", "HV4a1_a", sep=" "),
+    haplogroup %in% c("HV6", "HV7", "HV8", "HV9", "HV10", "HV11", "HV14", "HV15", "HV16", "HV17", "HV22", "HV23", "HV24") ~ paste("HV", "HV_6_7_8_9_10_11_14_15_16_17_22_23_24", sep=" "),
+    haplogroup == "HV9a" ~ paste("HV9", "HV9_a", sep=" "),
+    haplogroup %in% c("H1b", "H1f", "H1g", "H1k", "H1y", "H1z", "H1aa", "H1ab", "H1ac", "H1ad", "H1cc") ~ paste("H1", "H1_b_f_g_k_y_z_aa_ab_ac_ad_cc", sep=" "),
+    haplogroup %in% c("H1b1a", "H1b1b", "H1b1c", "H1b1d", "H1b1h") ~ paste("H1b1", "H1b1_a_b_c_d_h", sep=" "),
+    haplogroup == "H1f1" ~ paste("H1f", "H1f_1", sep=" "),
+    haplogroup == "H1c1d" ~ paste("H1c1", "H1c1_d", sep=" "),
+    haplogroup == "H1c9" ~ paste("H1c", "H1c_9", sep=" "),
+    haplogroup == "H1e1a8" ~ paste("H1e1a", "H1e1a_8", sep=" "),
+    haplogroup == "H1e3" ~ paste("H1e", "H1e_3", sep=" "),
+    haplogroup %in% c("H1i", "H1an", "H1bb") ~ paste("H1", "H1_i_an_bb", sep=" "),
+    haplogroup %in% c("H1n1", "H1n2", "H1n3", "H1n4") ~ paste("H1n", "H1n_1_2_3_4", sep=" "),
+    haplogroup == "H1n5" ~ paste("H1n", "H1n_5", sep=" "),
+    haplogroup %in% c("H1o", "H1ck") ~ paste("H1", "H1_o_ck", sep=" "),
+    haplogroup %in% c("H1ao", "H1cg") ~ paste("H1", "H1_ao_cg", sep=" "),
+    haplogroup %in% c("H1bf", "H1bg", "H1bh", "H1ch") ~ paste("H1", "H1_bf_bg_bh_ch", sep=" "),
+    haplogroup == "H1cd" ~ paste("H1", "H1_cd", sep=" "),
+    haplogroup == "H2a1n" ~ paste("H2a1", "H2a1_n", sep=" "),
+    haplogroup == "H2a2b" ~ paste("H2a2", "H2a2_b", sep=" "),
+    haplogroup %in% c("H2b", "H2c") ~ paste("H2", "H2_b_c", sep=" "),
+    haplogroup %in% c("H3a", "H3g", "H3i", "H3j", "H3k") ~ paste("H3", "H3_a_g_i_j_k", sep=" "),
+    haplogroup %in% c("H3b1", "H3b2", "H3b3", "H3b4", "H3b5", "H3b6", "H3b7") ~ paste("H3b", "H3b_1_2_3_4_5_6_7", sep=" "),
+    haplogroup == "H3d" ~ paste("H3", "H3_d", sep=" "),
+    haplogroup %in% c("H3h", "H3m", "H3n") ~ paste("H3", "H3_h_m_n", sep=" "),
+    haplogroup == "H3v2" ~ paste("H3v", "H3v_2", sep=" "),
+    haplogroup == "H3av" ~ paste("H3", "H3_av", sep=" "),
+    haplogroup %in% c("H4a1a3", "H4a1a4") ~ paste("H4a1a", "H4a1a_3_4", sep=" "),
+    haplogroup %in% c("H5a1m", "H5a1n") ~ paste("H5a1", "H5a1_m_n", sep=" "),
+    haplogroup == "H5a1p" ~ paste("H5a1", "H5a1_p", sep=" "),
+    haplogroup == "H5a6" ~ paste("H5a", "H5a_6", sep=" "),
+    haplogroup == "H5q" ~ paste("H5", "H5_q", sep=" "),
+    haplogroup %in% c("H5r", "H5s", "H5t") ~ paste("H5", "H5_r_s_t", sep=" "),
+    haplogroup == "H5v" ~ paste("H5", "H5_v", sep=" "),
+    haplogroup %in% c("H11", "H12", "H91", "H108") ~ paste("H", "H_8_11_12_31_91_108", sep=" "),
+    haplogroup %in% c("H8", "H31") ~ paste("H", "H_8_11_12_31_91_108", "H_8_31", sep=" "),
+    haplogroup == "H8b" ~ paste("H8", "H8_b_c", sep=" "),
+    haplogroup == "H8c" ~ paste("H8", "H8_b_c", "H8_c", sep=" "),
+    haplogroup == "H11a7" ~ paste("H11a", "H11a_7", sep=" "),
+    haplogroup %in% c("H9", "H32", "H46", "H52", "H69", "H103", "H107") ~ paste("H", "H_9_32_46_52_69_103_107", sep=" "),
+    haplogroup %in% c("H10e", "H10f", "H10g") ~ paste("H10", "H10_e_f_g", sep=" "),
+    haplogroup == "H13a1d" ~ paste("H13a1", "H13a1_d", sep=" "),
+    haplogroup %in% c("H13b1a", "H13b1b") ~ paste("H13b1", "H13b1_a_b", sep=" "),
+    haplogroup == "H14a1" ~ paste("H14a", "H14a_1", sep=" "),
+    haplogroup %in% c("H16a", "H16c", "H16d") ~ paste("H16", "H16_a_c_d", sep=" "),
+    haplogroup %in% c("H17", "H27") ~ paste("H", "H_17_27", sep=" "),
+    haplogroup %in% c("H27a", "H27b") ~ paste("H27", "H27_a_b", sep=" "),
+    haplogroup %in% c("H18", "H19") ~ paste("H", "H_18_19", sep=" "),
+    haplogroup %in% c("H34", "H64", "H85") ~ paste("H", "H_34_64_85", sep=" "),
+    haplogroup == "H55_b" ~ paste("H55", "H55_b", sep=" "),
+    haplogroup %in% c("R2b", "R2c", "R2d") ~ paste("R2", "R2_a_b_c_d", sep=" "),
+    haplogroup == "R2a" ~ paste("R2", "R2_a_b_c_d", "R2_a", sep=" "),
+    haplogroup == "J1b1a1e" ~ paste("J1b1a1", "J1b1a1_e", sep=" "),
+    haplogroup == "J1c3m" ~ paste("J1c3", "J1c3_m", sep=" "),
+    haplogroup %in% c("J1c7", "J1c14") ~ paste("J1c", "J1c_7_12_13_14", sep=" "),
+    haplogroup %in% c("J1c12", "J1c13") ~ paste("J1c", "J1c_7_12_13_14", "J1c_12_13", sep=" "),
+    haplogroup == "J1d" ~ paste("J1", "J1_d", sep=" "),
+    haplogroup == "J2a2a1a" ~ paste("J2a2a1", "J2a2a1_a", sep=" "),
+    haplogroup == "J2b1a5" ~ paste("J2b1a", "J2b1a_5", sep=" "),
+    haplogroup %in% c("T1a1'3", "T1a2", "T1a4", "T1a11", "T1a12", "T1a13") ~ paste("T1a", "T1a_1_2_3_4_11_12_13", sep=" "),
+    haplogroup == "T1a1l" ~ paste("T1a1", "T1a1_l", sep=" "),
+    haplogroup %in% c("T2a2", "T2a3") ~ paste("T2a", "T2a_2_3", sep=" "),
+    haplogroup %in% c("T2b3a", "T2b3c", "T2b3d", "T2b3e") ~ paste("T2b3", "T2b3_a_c_d_e", sep=" "),
+    haplogroup %in% c("T2b4b", "T2b4c", "T2b4d", "T2b4e", "T2b4f", "T2b4g", "T2b4h") ~ paste("T2b4", "T2b4_b_c_d_e_f_g_h", sep=" "),
+    haplogroup == "T2b6b" ~ paste("T2b6", "T2b6_b", sep=" "),
+    haplogroup == "T2b9" ~ paste("T2b", "T2b_9", sep=" "),
+    haplogroup == "T2b16" ~ paste("T2b", "T2b_16", sep=" "),
+    haplogroup %in% c("T2b21", "T2b22") ~ paste("T2b", "T2b_21_22", sep=" "),
+    haplogroup %in% c("T2c1d", "T2c1e", "T2c1f") ~ paste("T2c1", "T2c1_d_e_f", sep=" "),
+    haplogroup %in% c("T2e", "T2m") ~ paste("T2", "T2_e_m", sep=" "),
+    haplogroup == "T2e7" ~ paste("T2e", "T2e_7", sep=" "),
+    haplogroup == "T2f" ~ paste("T2", "T2_f", sep=" "),
+    haplogroup == "R6a" ~ paste("R6", "R6_a", sep=" "),
+    haplogroup == "R8a1b" ~ paste("R8a1", "R8a1_b", sep=" "),
+    haplogroup == "F1a3a" ~ paste("F1a3", "F1a3_a", sep=" "),
+    haplogroup %in% c("F1b", "F1d", "F1e", "F1g") ~ paste("F1", "F1_b_d_e_g", sep=" "),
+    haplogroup %in% c("F2a", "F2b", "F2g") ~ paste("F2", "F2_a_b_g", sep=" "),
+    haplogroup == "F2a1" ~ paste("F2a", "F2a_1", sep=" "),
+    haplogroup %in% c("F2h", "F2i") ~ paste("F2", "F2_h_i", sep=" "),
+    haplogroup == "F3b1" ~ paste("F3b", "F3b_1", sep=" "),
+    haplogroup %in% c("R11'B6", "B4'5", "R24") ~ paste("R", "R_11_24", sep=" "),
+    haplogroup %in% c("B4'5", "B2") ~ paste("B", "B_2_4_5_6", sep=" "),
+    haplogroup %in% c("F2h", "F2i") ~ paste("B4", "B4_a_g_h_i_k_m", sep=" "),
+    haplogroup == "B4a1a1a23" ~ paste("B4a1a1a", "B4a1a1a_23", sep=" "),
+    haplogroup == "B4a1a1r" ~ paste("B4a1a1", "B4a1a1_r", sep=" "),
+    haplogroup %in% c("B4a1b", "B4a1e") ~ paste("B4a1", "B4a1_b_e", sep=" "),
+    haplogroup %in% c("B4a1c2", "B4a1c4", "B4a1c5") ~ paste("B4a1c", "B4a1c_2_4_5", sep=" "),
+    haplogroup == "B2b1" ~ paste("B2b", "B2b_1", sep=" "),
+    haplogroup == "B2w" ~ paste("B2", "B2_w", sep=" "),
+    haplogroup %in% c("B4b1a1", "B4b1a2", "B4b1a3") ~ paste("B4b1a", "B4b1a_1_2_3", sep=" "),
+    haplogroup == "B4c1b2" ~ paste("B4c1b", "B4c1b_2", sep=" "),
+    haplogroup == "B4c1c1" ~ paste("B4c1c", "B4c1c_1", sep=" "),
+    haplogroup == "B5a2a1b" ~ paste("B5a2a1", "B5a2a1_b", sep=" "),
+    haplogroup == "B5b2c" ~ paste("B5b2", "B5b2_c", sep=" "),
+    haplogroup %in% c("P1", "P2'10", "P8") ~ paste("P", "P_1_2_8_10", sep=" "),
+    haplogroup %in% c("P1e", "P1f") ~ paste("P1", "P1_e_f", sep=" "),
+    haplogroup == "U1a1a3" ~ paste("U1a1a", "U1a1a_3", sep=" "),
+    haplogroup %in% c("U5a1a1a", "U5a1a1b", "U5a1a1h") ~ paste("U5a1a1", "U5a1a1_a_b_h", sep=" "),
+    haplogroup == "U5a1a1d" ~ paste("U5a1a1", "U5a1a1_d", sep=" "),
+    haplogroup == "U5a1b1d1" ~ paste("U5a1b1d", "U5a1b1d_1", sep=" "),
+    haplogroup %in% c("U5a1b3", "U5a1b4") ~ paste("U5a1b", "U5a1b_3_4", sep=" "),
+    haplogroup == "U5a2a" ~ paste("U5a2", "U5a2_a", sep=" "),
+    haplogroup == "U5a2e" ~ paste("U5a2", "U5a2_e", sep=" "),
+    haplogroup %in% c("U5b1b", "U5b1c", "U5b1e", "U5b1h") ~ paste("U5b1", "U5b1_b_c_e_h", sep=" "),
+    haplogroup %in% c("U5b1b1a", "U5b1b1d", "U5b1b1f") ~ paste("U5b1b1", "U5b1b1_a_d_f", sep=" "),
+    haplogroup == "U5b1b1e" ~ paste("U5b1b1", "U5b1b1_e", sep=" "),
+    haplogroup %in% c("U5b1e", "U5b1h") ~ paste("U5b1", "U5b1_e_h", sep=" "),
+    haplogroup == "U5b2a1a1" ~ paste("U5b2a1a", "U5b2a1a_1", sep=" "),
+    haplogroup %in% c("U5b2a4", "U5b2a5", "U5b2a6") ~ paste("U5b2a", "U5b2a_4_5_6", sep=" "),
+    haplogroup == "U6a3" ~ paste("U6a", "U6a_2_3_8", sep=" "),
+    haplogroup %in% c("U6a2", "U6a8") ~ paste("U6a", "U6a_2_3_8", "U6a_2_8", sep=" "),
+    haplogroup == "U6a2c" ~ paste("U6a2", "U6a2_c", sep=" "),
+    haplogroup %in% c("U6a3b", "U6a3e", "U6a3f") ~ paste("U6a3", "U6a3_b_e_f", sep=" "),
+    haplogroup %in% c("U6b", "U6d") ~ paste("U6a'b'd", "U6_b_d", sep=" "),
+    haplogroup %in% c("U2c'd", "U2e") ~ paste("U2", "U2_c_d_e", sep=" "),
+    haplogroup == "U4b1b" ~ paste("U4b1", "U4b1_b", sep=" "),
+    haplogroup == "U8b1a2b" ~ paste("U8b1a2", "U8b1a2_b", sep=" "),
+    haplogroup %in% c("K1a4a1a1", "K1a4a1a3") ~ paste("K1a4a1a", "K1a4a1a_1_3", sep=" "),
+    haplogroup == "K1a4j" ~ paste("K1a4", "K1a4_j", sep=" "),
+    haplogroup %in% c("K1a9", "K1a10", "K1a13", "K1a14", "K1a15", "K1a16", "K1a26") ~ paste("K1a", "K1a_9_10_13_14_15_16_26", sep=" "),
+    haplogroup %in% c("K1a11", "K1a24", "K1a30", "K1a31") ~ paste("K1a", "K1a_11_24_30_31", sep=" "),
+    haplogroup %in% c("K1b1a", "K1b1b") ~ paste("K1b1", "K1b1_a_b", sep=" "),
+    haplogroup %in% c("K1b1a1a", "K1b1a1b") ~ paste("K1b1a1", "K1b1a1_a_b", sep=" "),
+    haplogroup %in% c("K1d", "K1e", "K1f") ~ paste("K1", "K1_d_e_f", sep=" "),
+    haplogroup == "D1" ~ paste("D4", sep=" "),
+    haplogroup == "D2" ~ paste("D4e1", sep=" "),
+    haplogroup == "B2" ~ paste("B4b", sep=" "),
+    TRUE ~ paste(haplo_path, paste(haplo_list[1:(haplo_length-1)], collapse=""), sep=" ")
+  )
+  haplo_path <- unlist(strsplit(haplo_path, " "))
+  haplo_path <- c(haplo_path, haplogroup)
+
+  for (each_road in haplo_path){
+    SNPs <- append(SNPs, mtdna_groupings[[each_road]])
+  }
+  return(SNPs)
+}
+```
+
+The star player in my function above would be the dplyr function `case_when()`. If you have ever used Java before, you've likely used switch-case, which is what this function looks to emulate, albeit somewhat fussily. My function was looking to create a list of haplogroups each haplogroup or subclade would need to utilize in order to obtain its list of SNPs, and then to actually compose that list of SNPs based off of the list of haplogroups utilized. Only issue is, the number of haplogroups to be returned in that list had sizes ranging from nothing to 3, and case_when wants all of its returned values to be the same length regardless of the case. I ultimately found a way around this by pasting together the items of the list into a single string which I then broke apart outside of the case_when statement.
+
+All that needed to be done after was to run this function over each and every single name in that variable I created previously, `mtdna_groupings`. I decided to experiment a little more with text's versitility in R and used the functions `eval()` and `parse()` to get the job done.
+
+```{r}
+for (each_haplo in names(mtdna_groupings)){
+  mtdna_toeval <- paste("mtdna_groupings[[\"", each_haplo, "\"]] <- haplo.sorter(\"", each_haplo, "\")", sep="")
+  eval(parse(text=mtdna_toeval))
+}
+```
+
+# From List of Lists to Data Frame
+
+Turning a list of lists into a data frame is simple in theory, but that simplicity vanishes when the sublists have varying lengths. It starts the same way it might typically, which is with an empty data frame whose columns are named.
+
+```{r}
+mtdna_df <- data.frame(
+  "POS" = c("0"),
+  "mutation" = c("0"),
+  "haplogroup" = c("0")
+)
+```
+
+The next part, though, is what made me decide to make this its own separate file. It has taken me, on average, 45 minutes for this next part to run. Having to deal with that more than once is less than appealing. What this part is doing is breaking each of the SNPs in each of the haplogroups and subclades into a certain format. The format is
+
+
+* __POS__ - stands for position, which is the exact location on the mtDNA where the SNP is located
+
+* __mutation__ - the nucleotide present at a given position based on the haplogroup
+
+* __haplogroup__ - the haplogroup which the SNP and its mutation belongs to
+
+
+These are all put into a temporary data frame which are then row binded to the data frame created above, `mtdna_df`. Again, I repeat: 45 minutes run time on average.
+
+```{r}
+for (each_haplo in names(mtdna_groupings)){
+  SNPs <- mtdna_groupings[[each_haplo]]
+  for (each_SNP in SNPs){
+    POS_ <- gsub("^[ACGT\\(]{0,3}([^ACGTacgtdX\\)]+)([ACGTacgtdX]+)\\)?!{0,}", "\\1", each_SNP)
+    mutation_ <- gsub("^[ACGT\\(]{0,3}([^ACGTacgtdX\\)]+)([ACGTacgtdX]+)\\)?!{0,}", "\\2", each_SNP)
+    temp_df <- data.frame(
+      "POS"=c(POS_), 
+      "mutation"=c(mutation_), 
+      "haplogroup"=c(each_haplo)
+      )
+    temp_df
+    mtdna_df <- rbind(mtdna_df, temp_df)
+  }
+}
+```
+
+Lastly, there's some light cleanup work to be done, such as removing the first row which is empty, removing instances of repeated SNPs in a given haplogroup which occur due to back mutations, and the removal of parentheses.
+
+```{r}
+mtdna_df <- mtdna_df[-1,]
+mtdna_df <- group_by(mtdna_df, haplogroup)
+mtdna_df <- mtdna_df[!duplicated(mtdna_df[, c("POS", "haplogroup")], fromLast=T),]
+mtdna_df[] <-  lapply(mtdna_df, gsub, pattern='\\)', replacement='')
+```
+
+# The Result
+
+The result is a data frame whose length of time to create is too great for its entire creation process to be included in the original document.
+
+```{r rows.print=25}
+mtdna_df
+```
