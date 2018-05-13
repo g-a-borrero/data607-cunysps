@@ -19,7 +19,8 @@ To receive full credit, you’ll need to deliver on all of the items in the chec
 - [x] Project includes at least one graphic that supports your conclusion(s).
 - [ ] Project includes at least one statistical analysis that supports your conclusion(s).
 - [ ] Project includes at least one feature that we did not cover in class!  There are many examples:  “I used ggmap; I created a decision tree; I ranked the results; I created my presentation slides directly from R; I figured out to use OAuth 2.0...”
-- [ ] Presentation.  Was the presentation delivered in the allotted time (3 to 5 minutes)?  Presentation.  Did you show (at least) one challenge you encountered in code and/or data, and what you did when you encountered that challenge?  If you didn’t encounter any challenges, your assignment was clearly too easy for you!
+- [ ] Presentation.  Was the presentation delivered in the allotted time (3 to 5 minutes)?
+- [ ] Presentation.  Did you show (at least) one challenge you encountered in code and/or data, and what you did when you encountered that challenge?  If you didn’t encounter any challenges, your assignment was clearly too easy for you!
 - [ ] Presentation.  Did the audience come away with a clear understanding of your motivation for undertaking the project?
 - [ ] Presentation.  Did the audience come away with a clear understanding of at least one insight you gained or conclusion you reached or hypothesis you “confirmed” (rejected or failed to reject...)?
 - [ ] Code and data.  Have you delivered the submitted code and data where it is self-contained—preferably in rpubs.com and github?  Am I able to fully reproduce your results with what you’ve delivered?  You won’t receive full credit if your code references data on your local machine!
