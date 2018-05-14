@@ -1,0 +1,29 @@
+---
+title: "Final Project Proposal for DATA 607"
+author: "Gabrielle Bartomeo"
+date: "April 29, 2018"
+output:
+  html_document:
+    theme: journal
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# The Project
+
+Access to the 1000 Genomes Project provides a host of information on various types of DNA. With Mother's Day coming up and my interest in DNA, I can't help be curious what most of the mtDNA haplogroups are of those who were tested in the 1000 Genomes Project. My hypothesis is that __more than half__ of all testers will share in __a single mtDNA haplogroup__ from one of the following: A, B, C, D, E, F, G, H, I, J, K, L1, L2, L4, L5, L6, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z. DNA has been an active and important part of my life for several years now, even though I'm not a professional in the field at all; my first DNA test was an mtDNA test, and that makes this all the more interesting to me.
+
+# Workflow
+
+__Packages:__ tidyr, dplyr, vcfR, ggplot2
+
+1. Webscrape the [mtDNA tree Build 17](http://www.phylotree.org/tree/index.htm) from [PhyloTree](http://www.phylotree.org/tree/index.htm)
+2. Get the positions and alleles required for each mtDNA haplogroup and subclade
+3. Create a data frame with all of the mtDNA haplogroups and subclades and the positions and alleles required to qualify for those haplogroups and subclades
+4. Use the file from [1000 Genomes Project](http://www.internationalgenome.org/data) named "ALL.chrMT.phase1_samtools_si.20101123.snps.low_coverage.genotypes.vcf.gz" to gather mtDNA from around 1000 different individuals
+5. Read the *.VCF file into R using vcfR
+6. Make the VCF file into a tibble
+7. Create a function for running the input data frame or tibble against the haplogroup data frame and outputting the haplogroups for each individual, with mismatching.
+8. Create a plot with the resulting data frame to show where or how the DNA compares, such as histograms
