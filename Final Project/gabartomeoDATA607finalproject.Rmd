@@ -1,0 +1,214 @@
+---
+title: "Final Project DATA 607"
+author: "Gabrielle Bartomeo"
+date: "April 29, 2018"
+output:
+  html_document:
+    theme: spacelab
+    code_folding: hide
+    df_print: paged
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+---
+
+```{r setup, include=FALSE}
+library(vcfR)
+library(tidyr)
+library(dplyr, quietly=TRUE)
+library(ggplot2)
+dna_location <- "https://raw.githubusercontent.com/gabartomeo/data607-cunysps/master/Final%20Project/Data/ALL.chrMT.phase1_samtools_si.20101123.snps.low_coverage.genotypes.vcf"
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, fig.width=12)
+```
+
+# Abstract
+
+The participants of the 1000 Genomes Project, totalling 1,074 in number, had their whole genomes sequenced. Observations of their mtDNA were compared to a database created by scraping the most recent build of mtDNA phylogenetic tree from PhyloTree. While the haplogroup N was the most populous of the mtDNA haplogroups for the participants, no single haplogroup made the 50% threshold. When all haplogroups and subclades deriving from N were observed, nearly 60% of participants were accounted for.
+
+# Objective
+
+To determine whether half or more of participants in the 1000 Genomes Project have a single mtDNA haplogroup (L0, L1, L2, L3, L4, L5, L6, M, C, Z, D, E, G, Q, N, O, A, S, R, I, W, X, Y, B, F, P, U, HV, K, H, V, J, T).
+
+# Terms
+
+* __mtDNA__: Mitochondrial DNA. This is the DNA that is passed down from mother to child, going all the way back through time.
+* __Haplogroup__: a group of individuals who share common patrilineal or matrilineal ancestor.
+* __Subclade__: sub-haplogroups to further differentiate groups of people.
+* __SNP__: Single Nucleotide Polymorphism. A position on a chromosome that has a particular allele in that position.
+* __Allele__: any of the alternative forms of a gene that may occur at a given locus.^[1]^ In the case of human DNA, typically either an A, C, G, or T; each of these is a nucleotide base
+    * **A**denine
+    * **C**ytosine
+    * **G**uanine
+    * **T**hymine
+
+# Methods
+
+## mtDNA
+
+Every human born (as of writing this) has an mtDNA haplogroup they belong to, passed to them from their biological mother, and passed to their biological mother from her biological mother, passing down through the ages to thousands of years ago. The basic layout of mtDNA haplogroups is explained in the chart below, with each of the haplogroups being displayed.
+
+![](https://i.imgur.com/PUpgyZe.png)
+
+What is not displayed here is the subclades, which are basically sub-haplogroups. For example, H3 is a subclade of the haplogroup H.
+
+Each haplogroup and, by extension, each subclade, has SNPs that set it apart from each other. Subclades inherit their SNPs from the subclades and haplogroups they derive from; so, too, is true for haplogroups.
+
+To further explore this, information was scraped from the full build of the phylogenetic tree of human mitochondrial DNA. For a full explanation of how this was done, please visit this [site](http://rpubs.com/gabartomeo/data607finalprojectsupplement). Due to run times, the data was loaded directly from that project into this one.
+
+```{r message=FALSE}
+load(url("https://github.com/gabartomeo/data607-cunysps/blob/master/Final%20Project/Data/mtdna.RData?raw=true"))
+```
+
+This data, brought in, needed only a couple of touch ups to be discussed. First, all of the alleles to be capitalized.
+
+```{r}
+mtdna_df[] <- lapply(mtdna_df, gsub, pattern='^([acgt])$', replacement='\\U\\1', perl=T)
+```
+
+Second, all instances of "CRS" and "rRS" that have gotten into the data frame should be removed.
+
+```{r message=FALSE}
+mtdna_df <- anti_join(mtdna_df, filter(mtdna_df, mutation=="CRS"))
+```
+
+Third and lastly, the data is ungrouped.
+
+```{r}
+mtdna_df <- ungroup(mtdna_df)
+```
+
+Theoretically, every SNP should have the same allele in a subclade that it does in the haplogroup or subclade it derives from. To test this, an exploration of the mtDNA haplogroup E can be performed.
+
+```{r}
+e_df <- data.frame(
+  haplogroup = rep("0", length(unique(grep("^E", mtdna_haplogroups, value=TRUE)))),
+  E = as.double(rep(rep(0, length(unique(grep("^E", mtdna_haplogroups, value=TRUE))))))
+)
+
+e_df$haplogroup <- unique(grep("^E", mtdna_haplogroups, value=TRUE))
+e_df$E <- lapply(e_df$haplogroup, function(x) nrow(intersect(select(filter(mtdna_df, haplogroup==x), POS, mutation), select(filter(mtdna_df, haplogroup=="E"), POS, mutation)))/nrow(filter(mtdna_df, haplogroup=="E")))
+e_df$E <- unlist(e_df$E)*100
+ggplot(e_df, aes(x=haplogroup, y=E, fill=haplogroup)) + geom_bar(stat="identity") + theme(text = element_text(size=20), axis.text.x = element_text(angle = 90, hjust = 1)) + labs(y="% Common with Haplogroup E", x="Haplogroups", fill="Haplogroups")
+knitr::kable(e_df, align="c", col.names=c("Haplogroup", "Compared to Haplogroup E"), digits=2)
+```
+
+```{r echo=FALSE}
+rm(e_df)
+```
+
+As can be observed, there is no guarantee of there being a one-to-one inheritance of SNPs in a subclade of a haplogroup. This can in turn be extended to the top-level haplogroups, as can be seen with the haplogroup N and the haplogroups that derive from it.
+
+```{r}
+n_df <- data.frame(
+  haplogroup = rep("0", length(unique(grep("^[NOASRIWXYBFHVJTPUK]$", mtdna_haplogroups, value=TRUE)))),
+  N = as.double(rep(rep(0, length(unique(grep("^[NOASRIWXYBFHVJTPUK]$", mtdna_haplogroups, value=TRUE))))))
+)
+
+n_df$haplogroup <- unique(grep("^[NOASRIWXYBFHVJTPUK]$", mtdna_haplogroups, value=TRUE))
+n_df$N <- lapply(n_df$haplogroup, function(x) nrow(intersect(select(filter(mtdna_df, haplogroup==x), POS, mutation), select(filter(mtdna_df, haplogroup=="N"), POS, mutation)))/nrow(filter(mtdna_df, haplogroup=="N")))
+n_df$N <- unlist(n_df$N)*100
+ggplot(n_df, aes(x=haplogroup, y=N, fill=haplogroup)) + geom_bar(stat="identity") + theme(text = element_text(size=20)) + labs(y="% Common with Haplogroup N", x="Haplogroups", fill="Haplogroups")
+knitr::kable(n_df, align="c", col.names=c("Haplogroup", "Compared to Haplogroup N"), digits=2)
+```
+
+There is a great variety in haplogroups and subclades, and the inheritance of SNPs for each is not guaranteed.
+
+## Participants
+
+The 1,074 individuals tested by the 1000 Genomes Project had their data brought into the workspace via the vcfR package.
+
+```{r message=FALSE, echo=FALSE}
+vcf <- read.vcfR(dna_location, verbose = FALSE )
+vcf <- vcfR2tidy(vcf)
+```
+
+Three sets of data were within the vcf file, but only one was required for analysis, the one called `gt`. This data was assigned its own variable with only the columns needed taken - Indiv, POS, and gt_GT_alleles - with the last being renamed to "mutation". This refers to how SNPs may be of the reference human model, or maybe a different allele at a given position. 
+
+```{r}
+indiv_snps <- select(vcf$gt, Indiv, POS, gt_GT_alleles)
+names(indiv_snps) <- c(names(indiv_snps)[1:2], "mutation")
+indiv_snps$POS <- as.character(indiv_snps$POS)
+```
+
+```{r echo=FALSE}
+rm(vcf)
+```
+
+After that, another data frame was created using the ids of the individuals and columns for each and every single mtDNA haplogroup.
+
+```{r}
+indiv_haplos <- distinct(indiv_snps, Indiv)
+indiv_haplos[, mtdna_haplogroups] <- NA
+```
+
+```{r}
+load(url("https://github.com/gabartomeo/data607-cunysps/blob/master/Final%20Project/Data/indivhaplos.RData?raw=true"))
+```
+
+Next comes loading in the RData version of this data frame because the code below, which will produce the same dataset, takes four hours to run on a multicore processor with sixteen gigabytes of memory. It compares each participant's SNPs to the SNPs required for each haplogroup, and then gives as a percentage how many SNPs the individual has for a given haplogroup.
+
+```{r eval=FALSE}
+# Not suggested to run this unless you have four hours to spare
+for (each_person in indiv_haplos$Indiv){
+  person_df <- filter(indiv_snps, Indiv==each_person)
+  person_df <- select(person_df, POS, mutation)
+  person_num <- grep(paste("^", each_person, "$", sep=""), indiv_haplos$Indiv)
+  for (each_haplo in mtdna_haplogroups){
+    haplo_df <- filter(mtdna_df, haplogroup==each_haplo)
+    haplo_df <- select(haplo_df, POS, mutation)
+    haplo_prob <- nrow(intersect(person_df, haplo_df))/nrow(haplo_df)
+    indiv_haplos[[each_haplo]][[person_num]] <- haplo_prob
+  }
+}
+```
+
+From there, their likely haplogroup was chosen by picking out the column with the max value out of all of the haplogroup columns.
+
+```{r}
+indiv_haplos$haplogroup <- colnames(indiv_haplos[,2:5185])[max.col(indiv_haplos[,2:5185],ties.method="first")]
+```
+
+```{r rows.print=25}
+select(indiv_haplos, Indiv, haplogroup)
+```
+
+# Results
+
+```{r message=FALSE}
+sum_haplos <- select(indiv_haplos, haplogroup)
+sum_haplos$haplogroup <- gsub("^((L[0-6])|(HV)|[MCZDEGQNOASRIWXYBFPUKHVJT]).*", "\\1", sum_haplos$haplogroup, perl=T)
+ggplot(arrange(sum_haplos, haplogroup), aes(haplogroup, fill=haplogroup)) + geom_histogram(stat="count") + theme(text = element_text(size=20), legend.position = "none") + labs(y="Frequency", x="Haplogroups", fill="Haplogroups")
+```
+
+It may be surprising to see so many represented by N, but consider how many haplogroups derive from N - O, A, S, R, I, W, X, Y, B, F, P, U, K, HV, H, V, J, T - and it becomes less surprising.
+
+![](https://i.imgur.com/PUpgyZe.png)
+
+If instead the numbers of those who are from N or a subclade or haplogroup derived from N are combined, a clearer picture begins to form about the participants.
+
+```{r}
+sum_haplos$haplogroup <- gsub("^((HV)|[NOASRIWXYBFPUHVJTK]).*", "N Derived", sum_haplos$haplogroup)
+ggplot(arrange(sum_haplos, haplogroup), aes(haplogroup, fill=haplogroup)) + geom_histogram(stat="count") + theme(text = element_text(size=20), legend.position = "none") + labs(y="Frequency", x="Haplogroups", fill="Haplogroups")
+```
+
+A significant amount of the participants are in the N derived haplogroups. If this is switched instead to percentages it becomes obvious that more than half of the participants are from an N derived haplogroup.
+
+```{r}
+sum_haplos <- as.data.frame(table(select(sum_haplos, haplogroup)))
+names(sum_haplos) <- c("haplogroup", "Percent")
+sum_haplos$Percent <- (sum_haplos$Percent/1074)*100
+ggplot(sum_haplos, aes(x=haplogroup, y=Percent, fill=haplogroup)) + geom_bar(stat="identity") + theme(text = element_text(size=20), legend.position = "none") + labs(y="Percent", x="Haplogroups")
+```
+
+# Conclusion
+
+Based on the analysis of the data, the haplogroup N and its derivatives, when combined, passed the 50% threshold and nearly hit 60%. However, none of the 33 individual mtDNA haplogroups met the hypothesized threshold of 50%.
+
+# Sources and References
+
+* "[ALL.chrMT.phase1_samtools_si.20101123.snps.low_coverage.genotypes.vcf.gz](http://www.internationalgenome.org/data)". 1000 Genomes Project. Web. 29 Apr 2018. 
+* "mtDNA tree Build 17". [PhyloTree](http://www.phylotree.org/). Web. 29 Ap 2018.
+
+1. "[Allele](https://www.merriam-webster.com/dictionary/allele)." Merriam-Webster.com. Merriam-Webster, n.d. Web. 29 Apr 2018.
+2. Phylogenetic tree of human mitochondrial DNA (mtDNA) haplogroups: [Human mitochondrial DNA haplogroup](https://en.wikipedia.org/wiki/Human_mitochondrial_DNA_haplogroup) on [Wikipedia](https://en.wikipedia.org/wiki/Main_Page). Accessed 29 Apr 2018.
